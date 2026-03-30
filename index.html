@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spinning Wheel Picker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 30px;
+      color: #e94560;
+      letter-spacing: 2px;
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 40px;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    /* ── Wheel ── */
+    .wheel-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .wheel-wrapper {
+      position: relative;
+      width: 400px;
+      height: 400px;
+    }
+
+    #wheel {
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      border: 6px solid #fff;
+      box-shadow: 0 0 30px rgba(233,69,96,0.5);
+      transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+    }
+
+    /* Pointer arrow */
+    .pointer {
+      position: absolute;
+      top: 50%;
+      right: -22px;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-top: 18px solid transparent;
+      border-bottom: 18px solid transparent;
+      border-right: 36px solid #e94560;
+      filter: drop-shadow(0 0 6px #e94560);
+      z-index: 10;
+    }
+
+    /* Centre cap */
+    .center-cap {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      background: #fff;
+      border-radius: 50%;
+      border: 4px solid #1a1a2e;
+      z-index: 10;
+    }
+
+    #spin-btn {
+      padding: 14px 48px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 20px rgba(233,69,96,0.5);
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+
+    #spin-btn:hover:not(:disabled) { transform: scale(1.05); }
+    #spin-btn:active:not(:disabled) { transform: scale(0.97); }
+    #spin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Result banner */
+    #result {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #ffd700;
+      min-height: 2rem;
+      text-align: center;
+      text-shadow: 0 0 10px rgba(255,215,0,0.6);
+    }
+
+    /* ── Names panel ── */
+    .names-section {
+      width: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .names-section h2 {
+      font-size: 1.1rem;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    #name-input {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 2px solid #333;
+      background: #16213e;
+      color: #eee;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    #name-input:focus { border-color: #e94560; }
+
+    #add-btn {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      background: #e94560;
+      color: #fff;
+      font-size: 1.2rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #add-btn:hover { background: #c73652; }
+
+    #names-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 340px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    #names-list::-webkit-scrollbar { width: 5px; }
+    #names-list::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+    #names-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #16213e;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.95rem;
+    }
+
+    #names-list li .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+
+    #names-list li .name-text { flex: 1; }
+
+    #names-list li button {
+      background: none;
+      border: none;
+      color: #e94560;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0 4px;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+
+    #names-list li button:hover { color: #ff8fa3; }
+
+    .empty-msg {
+      color: #555;
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    /* Modal overlay */
+    #modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #modal.show { display: flex; }
+
+    .modal-box {
+      background: #16213e;
+      border: 3px solid #e94560;
+      border-radius: 16px;
+      padding: 40px 50px;
+      text-align: center;
+      box-shadow: 0 0 50px rgba(233,69,96,0.4);
+      animation: pop 0.3s ease;
+    }
+
+    @keyframes pop {
+      from { transform: scale(0.7); opacity: 0; }
+      to   { transform: scale(1);   opacity: 1; }
+    }
+
+    .modal-box p { color: #aaa; margin-bottom: 8px; font-size: 1rem; }
+    .modal-box h2 { font-size: 2.4rem; color: #ffd700; margin-bottom: 24px; text-shadow: 0 0 14px rgba(255,215,0,0.7); }
+
+    #modal-close {
+      padding: 10px 36px;
+      font-size: 1rem;
+      font-weight: 700;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #modal-close:hover { background: #c73652; }
+  </style>
+</head>
+<body>
+
+<h1>Spinning Wheel</h1>
+
+<div class="container">
+  <!-- Wheel -->
+  <div class="wheel-section">
+    <div class="wheel-wrapper">
+      <canvas id="wheel" width="400" height="400"></canvas>
+      <div class="pointer"></div>
+      <div class="center-cap"></div>
+    </div>
+    <button id="spin-btn">SPIN</button>
+    <div id="result"></div>
+  </div>
+
+  <!-- Names -->
+  <div class="names-section">
+    <h2>Names</h2>
+    <div class="input-row">
+      <input id="name-input" type="text" placeholder="Enter a name…" maxlength="30" />
+      <button id="add-btn">+</button>
+    </div>
+    <ul id="names-list"></ul>
+  </div>
+</div>
+
+<!-- Winner modal -->
+<div id="modal">
+  <div class="modal-box">
+    <p>The wheel has chosen…</p>
+    <h2 id="modal-winner"></h2>
+    <button id="modal-close">Nice!</button>
+  </div>
+</div>
+
+<script>
+  const COLORS = [
+    '#e94560','#0f3460','#533483','#e94560','#2b9348',
+    '#f77f00','#d62828','#023e8a','#7b2d8b','#c77dff',
+    '#06d6a0','#118ab2','#ffd166','#ef476f','#4361ee'
+  ];
+
+  const canvas  = document.getElementById('wheel');
+  const ctx     = canvas.getContext('2d');
+  const spinBtn = document.getElementById('spin-btn');
+  const nameInput = document.getElementById('name-input');
+  const addBtn  = document.getElementById('add-btn');
+  const namesList = document.getElementById('names-list');
+  const resultEl = document.getElementById('result');
+  const modal   = document.getElementById('modal');
+  const modalWinner = document.getElementById('modal-winner');
+  const modalClose = document.getElementById('modal-close');
+
+  let names = ['Alice', 'Bob', 'Charlie', 'Diana'];
+  let currentAngle = 0;
+  let spinning = false;
+
+  // ── Draw wheel ──────────────────────────────────────────────
+  function drawWheel() {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const r  = cx - 4;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (names.length === 0) {
+      ctx.fillStyle = '#16213e';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#555';
+      ctx.font = '18px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Add names to spin!', cx, cy);
+      return;
+    }
+
+    const slice = (Math.PI * 2) / names.length;
+
+    names.forEach((name, i) => {
+      const start = currentAngle + i * slice;
+      const end   = start + slice;
+      const color = COLORS[i % COLORS.length];
+
+      // Slice
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, start, end);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Label
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(start + slice / 2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${names.length > 10 ? 11 : 14}px Segoe UI`;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 4;
+      const maxLen = 14;
+      const label = name.length > maxLen ? name.slice(0, maxLen - 1) + '…' : name;
+      ctx.fillText(label, r - 14, 5);
+      ctx.restore();
+    });
+  }
+
+  // ── Names list ──────────────────────────────────────────────
+  function renderList() {
+    namesList.innerHTML = '';
+    if (names.length === 0) {
+      namesList.innerHTML = '<li class="empty-msg">No names yet</li>';
+      return;
+    }
+    names.forEach((name, i) => {
+      const li = document.createElement('li');
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = COLORS[i % COLORS.length];
+      const span = document.createElement('span');
+      span.className = 'name-text';
+      span.textContent = name;
+      const btn = document.createElement('button');
+      btn.textContent = '✕';
+      btn.title = 'Remove';
+      btn.addEventListener('click', () => {
+        names.splice(i, 1);
+        renderList();
+        drawWheel();
+        resultEl.textContent = '';
+      });
+      li.appendChild(dot);
+      li.appendChild(span);
+      li.appendChild(btn);
+      namesList.appendChild(li);
+    });
+  }
+
+  function addName() {
+    const val = nameInput.value.trim();
+    if (!val) return;
+    names.push(val);
+    nameInput.value = '';
+    renderList();
+    drawWheel();
+    resultEl.textContent = '';
+  }
+
+  addBtn.addEventListener('click', addName);
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') addName(); });
+
+  // ── Spin ────────────────────────────────────────────────────
+  spinBtn.addEventListener('click', () => {
+    if (spinning || names.length === 0) return;
+    spinning = true;
+    spinBtn.disabled = true;
+    resultEl.textContent = '';
+
+    // Pick a random winner index
+    const winnerIdx = Math.floor(Math.random() * names.length);
+    const slice = (Math.PI * 2) / names.length;
+
+    // We want the pointer (pointing left, i.e. at angle π) to land in the
+    // centre of winner's slice after spinning.
+    // Winner slice centre (in wheel coords) = currentAngle + winnerIdx*slice + slice/2
+    // We need: finalAngle + winnerIdx*slice + slice/2 ≡ π  (mod 2π)
+    // So: finalAngle = π - winnerIdx*slice - slice/2
+
+    const extraSpins = (5 + Math.floor(Math.random() * 5)) * Math.PI * 2;
+    let targetBase = Math.PI - winnerIdx * slice - slice / 2;
+    // Normalize so we always spin forward
+    while (targetBase < currentAngle + extraSpins - Math.PI * 2) targetBase += Math.PI * 2;
+    const targetAngle = targetBase + extraSpins;
+
+    // Animate with requestAnimationFrame
+    const duration = 4000 + Math.random() * 1000; // 4-5 s
+    const startAngle = currentAngle;
+    const startTime = performance.now();
+
+    function easeOut(t) {
+      return 1 - Math.pow(1 - t, 4);
+    }
+
+    function animate(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      currentAngle = startAngle + (targetAngle - startAngle) * easeOut(t);
+      drawWheel();
+
+      if (t < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        currentAngle = targetAngle % (Math.PI * 2);
+        drawWheel();
+        spinning = false;
+        spinBtn.disabled = false;
+        const winner = names[winnerIdx];
+        resultEl.textContent = `Winner: ${winner}`;
+        modalWinner.textContent = winner;
+        modal.classList.add('show');
+      }
+    }
+
+    requestAnimationFrame(animate);
+  });
+
+  modalClose.addEventListener('click', () => modal.classList.remove('show'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
+
+  // ── Init ────────────────────────────────────────────────────
+  renderList();
+  drawWheel();
+</script>
+</body>
+</html>
