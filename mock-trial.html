@@ -221,7 +221,7 @@ const flagTex = canvasTex(192, 120, (g, w, h) => {
 });
 // judge platform and bench
 box(room, 7.4, 1.1, 2.8, 0x4a2f1f, 0, 0.55, -7.3);
-box(room, 6.6, 1.75, 0.9, 0x6b4328, 0, 0.875, -5.75);
+const benchMesh = box(room, 6.6, 1.75, 0.9, 0x6b4328, 0, 0.875, -5.75);
 box(room, 7.0, 0.12, 1.2, 0x3f281a, 0, 1.8, -5.8);
 for (let x = -2.6; x <= 2.6; x += 1.3) box(room, 1.0, 1.1, 0.04, 0x5b3a26, x, 0.9, -5.28, false);
 box(room, 0.5, 0.1, 0.4, 0x3f281a, 1.1, 1.91, -5.8); // sound block
@@ -403,6 +403,7 @@ function updateCritter(c, dt) {
     case "shrug": aL = aR = 1.2 + Math.sin(t * 3) * 0.25; break;
     case "lookup": rx = -0.12; break;
     case "oath": aR = 2.7; break;
+    case "dazed": rz = Math.sin(t * 1.6) * 0.13; rx = -0.06 + Math.sin(t * 1.1) * 0.04; aR = 0.45 + Math.sin(t * 1.3) * 0.2; aL = 0.15; break;
     case "boom": aL = 1.6 + Math.sin(t * 22 + c.phase) * 1.1; aR = 1.6 + Math.sin(t * 19 + c.phase * 2) * 1.1; break;
     case "object": aR = 2.6; aL = 0.3; if (since < 0.5) hopY += Math.sin((since / 0.5) * Math.PI) * 0.35; break;
   }
@@ -456,7 +457,7 @@ function shot(name) {
 function camTo(name, dur = 1.5) {
   cam.shot = name;
   if (name === "orbit") return;
-  const s = shot(name);
+  const s = typeof name === "string" ? shot(name) : name;
   cam.fromP.copy(camera.position); cam.fromT.copy(camTarget);
   cam.toP.copy(s.p); cam.toT.copy(s.t);
   cam.t0 = now; cam.dur = reduced ? 0.001 : dur;
@@ -486,7 +487,7 @@ function resize() {
   const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
-  if (cam.shot !== "orbit") { const s = shot(cam.shot); cam.toP.copy(s.p); cam.toT.copy(s.t); }
+  if (typeof cam.shot === "string" && cam.shot !== "orbit") { const s = shot(cam.shot); cam.toP.copy(s.p); cam.toT.copy(s.t); }
 }
 new ResizeObserver(resize).observe(host);
 resize();
@@ -1169,7 +1170,7 @@ function startBoom() {
     m.scale.setScalar(s); m.position.copy(BOOM_CENTER);
     const a = Math.random() * Math.PI * 2, e = Math.random() * 1.2, sp = smoke ? 2 + Math.random() * 3 : 6 + Math.random() * 14;
     scene.add(m);
-    parts.push({ m, smoke, life: smoke ? 2.2 + Math.random() * 1.3 : 1 + Math.random() * 1.5, v: new T.Vector3(Math.cos(a) * Math.cos(e) * sp, Math.sin(e) * sp + (smoke ? 1.5 : 4), Math.sin(a) * Math.cos(e) * sp) });
+    parts.push({ m, smoke, born: now, life: smoke ? 2.2 + Math.random() * 1.3 : 1 + Math.random() * 1.5, v: new T.Vector3(Math.cos(a) * Math.cos(e) * sp, Math.sin(e) * sp + (smoke ? 1.5 : 4), Math.sin(a) * Math.cos(e) * sp) });
   }
   const ball = new T.Mesh(new T.SphereGeometry(1, 24, 16), new T.MeshBasicMaterial({ color: 0xffa040, transparent: true }));
   const core = new T.Mesh(new T.SphereGeometry(1, 24, 16), new T.MeshBasicMaterial({ color: 0xfff2b0, transparent: true }));
@@ -1196,7 +1197,7 @@ function updateBoom(dt) {
     p.m.position.addScaledVector(p.v, dt);
     p.m.rotation.x += dt * 4; p.m.rotation.y += dt * 3;
     if (p.smoke) p.m.scale.multiplyScalar(1 + dt * 0.25);
-    p.m.material.opacity = Math.max(0, 1 - t / p.life) * (p.smoke ? 0.65 : 1);
+    p.m.material.opacity = Math.max(0, 1 - (now - p.born) / p.life) * (p.smoke ? 0.65 : 1);
     p.m.visible = p.m.material.opacity > 0;
   });
   if (B.rebuild) {
@@ -1204,8 +1205,19 @@ function updateBoom(dt) {
     B.items.forEach((it, i) => { it.obj.position.lerpVectors(B.rebuild.from[i].p, it.pos0, k); it.obj.quaternion.copy(B.rebuild.from[i].q).slerp(it.q0, k); });
     return;
   }
+  if (judgeMess) {
+    judgeMess.stars.rotation.y += dt * 4;
+    if (now - (B.lastWisp || 0) > 0.3) { B.lastWisp = now; puff(judge.root.localToWorld(new T.Vector3(0, 1.35, 0)), 1, 1.4); }
+  }
   B.items.forEach((it) => {
     const o = it.obj;
+    if (it.settle) {
+      const k = ease(Math.min(1, (now - it.settle.t0) / it.settle.dur));
+      o.position.lerpVectors(it.settle.fromP, it.settle.toP, k);
+      o.quaternion.copy(it.settle.fromQ).slerp(it.settle.toQ, k);
+      return;
+    }
+    if (it.frozen) return;
     it.v.y -= 18 * dt;
     o.position.addScaledVector(it.v, dt);
     o.rotation.x += it.w.x * dt; o.rotation.y += it.w.y * dt; o.rotation.z += it.w.z * dt;
@@ -1227,6 +1239,8 @@ function restoreCourt() {
   B.items.forEach((it) => { it.obj.position.copy(it.pos0); it.obj.quaternion.copy(it.q0); });
   B.parts.forEach((p) => { scene.remove(p.m); p.m.geometry.dispose(); p.m.material.dispose(); });
   scene.remove(B.ball, B.core, B.light);
+  sootJudge(false);
+  judge.walk = null; judge.face = new T.Vector3(0, 0, 5);
   [judge, counsel.for, counsel.against, ...jurors, ...witnesses].forEach((c) => c && setMode(c, "idle"));
   boomState = null;
 }
@@ -1235,20 +1249,114 @@ boomBtn.addEventListener("click", () => {
   advanceCb = null;
   if (boomResolve) { const r = boomResolve; boomResolve = null; r(); }
 });
-async function explodeCourt(chk) {
+async function explodeCourt(P, chk) {
+  const R = P.ruling;
+  const winner = R.kind === "for" ? "against" : R.kind === "against" ? "for" : (Math.random() < 0.5 ? "for" : "against");
+  const line = mkLine();
+  sample(reversalPrompt(P, winner), { signal: P.signal, cache: false, modelTier: "quick", onText: ({ text }) => { line.text = text; } })
+    .then((r) => { line.text = r.text.trim(); line.done = true; })
+    .catch(() => { line.text = reversalFallback(P, winner); line.done = true; });
   camTo("blast", 0.6);
   await wait(500); chk();
   startBoom();
-  await wait(4500); chk();
+  await wait(4200); chk();
+  await aftermath(P, chk, line, winner); chk();
   await waitAdvance(); chk();
   await rebuildCourt(); chk();
-  judge.face = new T.Vector3(0, 0, 5);
-  counsel.for.face = counsel.against.face = JUDGE_SPOT;
-  jurors.forEach((j) => { j.face = JURY_LOOK; });
-  camTo("judge", 1.4);
+}
+
+/* After the blast: the judge climbs onto the wrecked bench and reverses the verdict */
+let judgeMess = null;
+const SOOT = 0xa66a52;
+function sootJudge(on) {
+  judge.root.traverse((o) => {
+    if (!o.isMesh) return;
+    if (on && o.material === mat(CORAL)) { o.userData.orig = o.material; o.material = mat(SOOT); }
+    else if (!on && o.userData.orig) { o.material = o.userData.orig; delete o.userData.orig; }
+  });
+  const head = gavel.children[1], leftEye = judge.eyes.children[0];
+  if (on) {
+    const mess = new T.Group(); judge.body.add(mess);
+    for (let i = 0; i < 7; i++) {
+      const tuft = box(mess, 0.08, 0.22 + Math.random() * 0.18, 0.08, i % 3 ? 0x8f8a84 : 0x3a332e, -0.36 + i * 0.12, 1.24, (Math.random() - 0.5) * 0.4, false);
+      tuft.rotation.set((Math.random() - 0.5) * 1.2, 0, (Math.random() - 0.5) * 1.4);
+    }
+    const stars = new T.Group(); stars.position.set(0, 1.62, 0); judge.root.add(stars);
+    for (let i = 0; i < 3; i++) { const st = box(stars, 0.13, 0.13, 0.13, 0xffd23f, Math.cos(i * 2.1) * 0.5, 0, Math.sin(i * 2.1) * 0.5, false); st.rotation.set(0.6, 0.6, 0); }
+    judgeMess = { mess, stars };
+    head.visible = false; leftEye.scale.y = 0.35;
+  } else {
+    if (judgeMess) { judge.body.remove(judgeMess.mess); judge.root.remove(judgeMess.stars); judgeMess = null; }
+    head.visible = true; leftEye.scale.y = 1;
+  }
+}
+function puff(at, n, life = 1.6) {
+  if (!boomState) return;
+  for (let i = 0; i < n; i++) {
+    const m = new T.Mesh(new T.BoxGeometry(1, 1, 1), new T.MeshBasicMaterial({ color: i % 2 ? 0x8f8a84 : 0x5a5048, transparent: true }));
+    m.scale.setScalar(0.18 + Math.random() * 0.22); m.position.copy(at);
+    scene.add(m);
+    boomState.parts.push({ m, smoke: true, born: now, life, v: new T.Vector3((Math.random() - 0.5) * 1.6, 0.8 + Math.random() * 1.4, (Math.random() - 0.5) * 1.6) });
+  }
+}
+const itemOf = (obj) => boomState && boomState.items.find((it) => it.obj === obj);
+const clampFloor = (v) => new T.Vector3(Math.max(-9, Math.min(9, v.x)), 0, Math.max(-6.5, Math.min(5, v.z)));
+
+function reversalPrompt(P, winner) {
+  const S = P.setup, R = P.ruling;
+  return `You are the judge in a slapstick courtroom video game. Case: ${S.title}. The jury's verdict was: ${R.text}
+
+Someone who disagreed just blew up the entire courtroom (cartoon explosion, nobody hurt). You climb out of the rubble and stand on the broken remains of your bench, covered in soot, hair smoking, holding half a gavel.
+
+Dazed but trying to stay dignified, announce that after an unexpected change of perspective the court is reversing itself: the ${label(P, winner)} wins${S.legal ? `, and the verdict is now ${S.votes[winner]}` : ""}. 2 or 3 short sentences, at most 55 words. Funny, a cough or two is fine, keep it PG. Start speaking right away.`;
+}
+function reversalFallback(P, winner) {
+  const S = P.setup;
+  return `*cough* ...Well. That was an unexpected change of perspective. Upon further... reflection, the court reverses itself. ${S.legal ? `The verdict is now ${S.votes[winner].toLowerCase()}.` : ""} The ${label(P, winner)} wins. Nobody touch anything.`;
+}
+
+async function aftermath(P, chk, line, winner) {
+  const B = boomState; if (!B) return;
+  // right the broken bench where it landed, tilted and cracked
+  const bench = itemOf(benchMesh), jIt = itemOf(judge.root);
+  const spot = clampFloor(bench.obj.position);
+  const benchQ = new T.Quaternion().setFromEuler(new T.Euler(0, (Math.random() - 0.5) * 0.6, 0.1));
+  bench.settle = { t0: now, dur: 0.7, fromP: bench.obj.position.clone(), fromQ: bench.obj.quaternion.clone(), toP: new T.Vector3(spot.x, 0.82, spot.z), toQ: benchQ };
+  bench.frozen = true;
+  // the judge digs out of the rubble
+  jIt.frozen = true;
+  const out = clampFloor(judge.root.position);
+  out.x += out.x > spot.x ? 1.4 : -1.4;
+  judge.root.position.copy(out);
+  judge.root.rotation.set(0, 0, 0);
+  sootJudge(true);
+  setMode(judge, "dazed");
+  puff(out.clone().setY(0.6), 14);
+  sfx.clatter(); sfx.clatter();
+  const camAt = new T.Vector3(spot.x * 0.5, 4.2, Math.min(10, spot.z + 7.5));
+  judge.face = camAt;
+  camTo({ p: camAt, t: new T.Vector3(spot.x, 1.6, spot.z) }, 1.4);
   await wait(1200); chk();
+  await walkTo(judge, new T.Vector3(spot.x, 1.7, spot.z), 1.4); chk();
+  judge.face = camAt;
+  camTo({ p: new T.Vector3(spot.x * 0.7, 3.6, spot.z + 6), t: new T.Vector3(spot.x, 2.9, spot.z) }, 1.0);
+  await wait(900); chk();
   await bangGavel(1); chk();
-  await say(judge, "The Judge", COLOR.judge, mkLine("Order. Order in the court. We are all going to pretend that did not happen. Court is adjourned."));
+  await say(judge, "The Judge", COLOR.judge, line); chk();
+  // the new winner's lawyer pops out of the rubble to celebrate
+  const w = counsel[winner], wIt = itemOf(w.root);
+  if (wIt) {
+    wIt.frozen = true;
+    const wp = clampFloor(w.root.position);
+    w.root.position.copy(wp); w.root.rotation.set(0, 0, 0);
+    w.face = camAt;
+    puff(wp.clone().setY(0.5), 10);
+    setMode(w, "cheer");
+  }
+  sfx.fanfare(); setTimeout(sfx.cheer, 400);
+  const lp = w.root.position, mid = new T.Vector3((spot.x + lp.x) / 2, 1.2, (spot.z + lp.z) / 2);
+  const dist = Math.max(7, Math.hypot(spot.x - lp.x, spot.z - lp.z) * 0.9 + 5);
+  camTo({ p: new T.Vector3(mid.x, mid.y + dist * 0.5, mid.z + dist), t: mid }, 1.6);
 }
 
 /* ---------- Director ---------- */
@@ -1566,7 +1674,7 @@ async function trial(file) {
     boomBtn.hidden = false;
     const boomed = await Promise.race([waitAdvance().then(() => false), new Promise((r) => { boomResolve = () => r(true); })]);
     boomBtn.hidden = true; boomResolve = null; chk();
-    if (boomed) await explodeCourt(chk);
+    if (boomed) await explodeCourt(P, chk);
   } catch (e) {
     if (my !== trialId || (e && e.code === "cancelled")) return;
     researching = false;
