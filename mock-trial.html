@@ -11,6 +11,7 @@
   --for: #2f9e7e;
   --against: #d1495b;
   --judge: #c8952e;
+  --witness: #7b61c9;
   --ui: "Fredoka", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
 }
@@ -46,13 +47,22 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 @keyframes bounce { 50% { transform: translateY(-6px); } }
 
 #dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; justify-content: center; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 20px; }
-.dock-in { display: flex; gap: 8px; width: min(640px, 100%); background: var(--paper); border: 3px solid var(--ink); border-radius: 22px; padding: 6px; box-shadow: 0 6px 0 rgba(0, 0, 0, .35); }
-#idea { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: 500 17px var(--ui); padding: 10px 12px; outline: none; }
+.dock-in { display: flex; align-items: flex-end; gap: 8px; width: min(640px, 100%); background: var(--paper); border: 3px solid var(--ink); border-radius: 22px; padding: 6px; box-shadow: 0 6px 0 rgba(0, 0, 0, .35); }
+.field { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#idea { display: block; width: 100%; resize: none; border: 0; background: transparent; color: var(--ink); font: 500 17px/1.4 var(--ui); padding: 10px 12px; outline: none; max-height: 40vh; overflow-y: auto; }
+#count { font-size: 12px; color: #8a7766; padding: 0 12px 4px; font-variant-numeric: tabular-nums; }
+#count.over { color: var(--against); font-weight: 600; }
 #idea::placeholder { color: #8a7766; }
 .gavel-btn { flex: none; width: 52px; height: 48px; border-radius: 16px; border: 3px solid var(--ink); background: var(--judge); cursor: pointer; display: grid; place-items: center; }
 .gavel-btn:active { transform: translateY(2px); }
 .gavel-btn:focus-visible, #quit:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
 #quit { position: absolute; top: 14px; right: max(16px, env(safe-area-inset-right, 0px)); z-index: 6; width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); cursor: pointer; display: grid; place-items: center; }
+
+#tip { position: absolute; left: 0; top: 0; z-index: 7; max-width: min(300px, calc(100vw - 24px)); background: var(--paper); border: 3px solid var(--ink); border-radius: 16px; padding: 16px 14px 12px; font-size: 15px; line-height: 1.38; box-shadow: 0 5px 0 rgba(0, 0, 0, .3); pointer-events: none; }
+#tip .who { top: -13px; left: 12px; font-size: 11.5px; }
+#mute { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); z-index: 6; width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); cursor: pointer; display: grid; place-items: center; }
+#mute .x { display: none; } #mute.off .x { display: inline; } #mute.off .w { display: none; }
+#mute:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .bubble.pop, .next, #tapHint, .txt.wait i { animation: none; }
@@ -62,9 +72,16 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 <div id="game"></div>
 <div class="bubble" id="bubble" hidden><span class="who" id="who"></span><div class="txt" id="txt"></div><span class="next" id="next" hidden></span><span class="tail" id="tail"></span></div>
 <div id="tapHint" hidden></div>
+<div id="tip" hidden><span class="who" id="tipWho"></span><div id="tipTxt"></div></div>
+<button id="mute" type="button" aria-label="Turn sound off">
+  <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#2a1c12"/><path class="w" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="#2a1c12" stroke-width="2.2" fill="none" stroke-linecap="round"/><path class="x" d="M16 9l6 6M22 9l-6 6" stroke="#2a1c12" stroke-width="2.4" stroke-linecap="round"/></svg>
+</button>
 <form id="dock">
   <div class="dock-in">
-    <input id="idea" maxlength="300" autocomplete="off" placeholder="What idea goes on trial?" aria-label="Idea to put on trial">
+    <div class="field">
+      <textarea id="idea" rows="1" maxlength="70000" placeholder="An idea, or a whole case file: charges, facts, evidence, witnesses…" aria-label="Idea or case file to put on trial"></textarea>
+      <span id="count" hidden></span>
+    </div>
     <button class="gavel-btn" type="submit" aria-label="Start the trial">
       <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><g fill="#2a1c12"><rect x="5" y="3" width="9" height="6" rx="1.5" transform="rotate(-45 9.5 6)"/><rect x="11" y="9" width="3" height="12" rx="1.5" transform="rotate(-45 12.5 15)"/><rect x="3" y="19" width="11" height="2.5" rx="1.2"/></g></svg>
     </button>
@@ -190,6 +207,13 @@ box(room, 1.4, 0.7, 8.2, 0x3f281a, 8.5, 0.35, -1.3);
 box(room, 0.15, 0.95, 8.4, 0x6b4328, 6.3, 0.475, -1.3);
 box(room, 0.3, 0.08, 8.5, 0x3f281a, 6.3, 0.99, -1.3);
 box(room, 3, 0.95, 0.15, 0x6b4328, 7.8, 0.475, 2.85);
+// witness stand
+box(room, 1.8, 0.45, 1.8, 0x4a2f1f, -4.6, 0.225, -5.1);
+box(room, 1.8, 0.55, 0.1, 0x6b4328, -4.6, 0.725, -4.25);
+box(room, 0.1, 0.55, 1.7, 0x6b4328, -3.75, 0.725, -5.1);
+box(room, 1.9, 0.07, 0.2, 0x3f281a, -4.6, 1.03, -4.25);
+box(room, 0.7, 0.5, 0.1, 0x3f281a, -4.6, 0.95, -5.85);
+const WIT_STAND = new T.Vector3(-4.6, 0.45, -5.1);
 
 /* Critters */
 function critter(scale = 1) {
@@ -257,7 +281,7 @@ const papers = [];
     papers.push({ m, side, ph: Math.random() });
   }
 });
-let researching = false;
+let researching = false, lastPaper = 0;
 
 // Jurors
 const juryRoot = new T.Group(); scene.add(juryRoot);
@@ -283,14 +307,17 @@ const jurors = JURORS.map((j, i) => {
 const JURY_LOOK = new T.Vector3(0, 0, -1);
 
 let signTex = null;
-function makeSignTex() {
-  const draw = (bg, word) => canvasTex(256, 160, (g, w, h) => {
+function makeSignTex(labels) {
+  const draw = (bg, word) => canvasTex(320, 160, (g, w, h) => {
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     g.strokeStyle = "rgba(0,0,0,.25)"; g.lineWidth = 10; g.strokeRect(5, 5, w - 10, h - 10);
-    g.fillStyle = "#fff"; g.font = '700 92px Fredoka, "Arial Black", sans-serif'; g.textAlign = "center"; g.textBaseline = "middle";
+    let size = 96;
+    g.font = `700 ${size}px Fredoka, "Arial Black", sans-serif`;
+    while (g.measureText(word).width > w - 36 && size > 30) { size -= 4; g.font = `700 ${size}px Fredoka, "Arial Black", sans-serif`; }
+    g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText(word, w / 2, h / 2 + 6);
   });
-  signTex = { YAY: draw("#2f9e7e", "YAY"), NAY: draw("#d1495b", "NAY") };
+  signTex = { for: draw("#2f9e7e", labels.for), against: draw("#d1495b", labels.against) };
 }
 
 /* ---------- Animation ---------- */
@@ -335,6 +362,8 @@ function updateCritter(c, dt) {
     case "sad": rx = 0.4; aL = aR = -0.05; hopY -= 0.05; break;
     case "shrug": aL = aR = 1.2 + Math.sin(t * 3) * 0.25; break;
     case "lookup": rx = -0.12; break;
+    case "oath": aR = 2.7; break;
+    case "object": aR = 2.6; aL = 0.3; if (since < 0.5) hopY += Math.sin((since / 0.5) * Math.PI) * 0.35; break;
   }
   if (walking) { aL = 0.3 + Math.sin(t * 14) * 0.45; aR = 0.3 - Math.sin(t * 14) * 0.45; hopY += Math.abs(Math.sin(t * 14)) * 0.05; }
   c.hop.position.y = hopY;
@@ -374,6 +403,7 @@ function shot(name) {
     tables: [[0, 4.6, 7.5], [0, 1.0, 1.2]],
     podium: [[1.2, 2.3, 3.1], [0.8, 1.3, -0.6]],
     jury: [[-0.8, 4.3, -0.9], [7.8, 1.5, -1.2]],
+    exam: [[3.0, 3.0, 2.8], [-2.0, 1.2, -3.2]],
     wide: [[0, 7.2, 12.5], [0, 1.2, -2]]
   }[name];
   const p = new T.Vector3(...S[0]), t = new T.Vector3(...S[1]);
@@ -388,6 +418,7 @@ function camTo(name, dur = 1.5) {
   cam.fromP.copy(camera.position); cam.fromT.copy(camTarget);
   cam.toP.copy(s.p); cam.toT.copy(s.t);
   cam.t0 = now; cam.dur = reduced ? 0.001 : dur;
+  if (dur >= 1 && typeof sfx !== "undefined") sfx.whoosh(dur);
 }
 function updateCamera() {
   if (cam.shot === "orbit") {
@@ -466,9 +497,14 @@ function updateBubble(dt) {
 /* Advance on tap / space */
 let advanceCb = null;
 function waitAdvance() { return new Promise((r) => { advanceCb = r; }); }
-function onTap() {
+function onTap(e) {
+  if (e && e.clientX != null) {
+    const j = jurorAt(e.clientX, e.clientY);
+    if (j >= 0) { showTip(j, e.clientX, e.clientY); return; }
+    if (!tip.hidden) showTip(-1);
+  }
   if (bubble.open && !bubbleComplete()) { if (bubble.line.done) bubble.shown = bubble.line.text.length; return; }
-  if (advanceCb) { const cb = advanceCb; advanceCb = null; cb(); }
+  if (advanceCb) { const cb = advanceCb; advanceCb = null; sfx.click(); cb(); }
 }
 host.addEventListener("pointerdown", onTap);
 bubbleEl.addEventListener("pointerdown", onTap);
@@ -477,28 +513,141 @@ addEventListener("keydown", (e) => {
   if (e.key === " " || e.key === "Enter") { e.preventDefault(); onTap(); }
 });
 
-/* ---------- Sound ---------- */
-let audio = null;
-function thunk() {
-  if (!audio) return;
-  const t = audio.currentTime;
-  const o = audio.createOscillator(), g = audio.createGain();
-  o.type = "triangle"; o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.12);
-  g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.2);
+/* ---------- Sound and voices ---------- */
+let audio = null, master = null, noiseBuf = null;
+let soundOn = true;
+try { soundOn = localStorage.getItem("court-sound") !== "off"; } catch (e) {}
+function initAudio() {
+  if (!audio) {
+    try {
+      audio = new (window.AudioContext || window.webkitAudioContext)();
+      master = audio.createGain(); master.gain.value = 0.6; master.connect(audio.destination);
+      noiseBuf = audio.createBuffer(1, audio.sampleRate, audio.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { audio = null; }
+  }
+  if (audio && audio.state === "suspended") audio.resume();
+  // a silent utterance inside the click unlocks speech on iPhone
+  if (window.speechSynthesis) { try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch (e) {} }
 }
+const live = () => soundOn && audio && master;
+function tone(type, f0, f1, dur, vol, when = 0) {
+  if (!live()) return;
+  const t = audio.currentTime + when, o = audio.createOscillator(), g = audio.createGain();
+  o.type = type; o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(dur, vol, filter = "bandpass", freq = 1200, q = 1, when = 0, attack = 0.005) {
+  if (!live()) return;
+  const t = audio.currentTime + when, s = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
+  s.buffer = noiseBuf; s.loop = true; f.type = filter; f.frequency.value = freq; f.Q.value = q;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f).connect(g).connect(master); s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+}
+const sfx = {
+  gavel() { tone("triangle", 190, 60, 0.18, 0.4); noise(0.06, 0.35, "highpass", 2500); },
+  step() { noise(0.05, 0.06, "lowpass", 500 + Math.random() * 300); },
+  paper() { noise(0.18, 0.08, "highpass", 3000 + Math.random() * 2000, 0.7, 0, 0.04); },
+  blip() { tone("sine", 660, 880, 0.08, 0.08); },
+  click() { tone("square", 1200, 900, 0.03, 0.03); },
+  whoosh(d = 1) { noise(Math.min(1.2, d * 0.7), 0.05, "bandpass", 600, 0.6, 0, 0.25); },
+  seal() { noise(0.09, 0.15, "lowpass", 900); tone("sine", 300, 180, 0.1, 0.12); },
+  pop(side) { const f = side === "for" ? 520 : 330; tone("sine", f, f * 1.6, 0.14, 0.22); tone("triangle", f * 1.5, f * 2, 0.1, 0.08, 0.04); },
+  objection() { tone("sawtooth", 233, 220, 0.35, 0.12); tone("sawtooth", 311, 294, 0.35, 0.1); noise(0.8, 0.12, "bandpass", 900, 0.5, 0.05, 0.25); },
+  murmur() { noise(1.4, 0.06, "bandpass", 500, 0.4, 0, 0.5); },
+  fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone("triangle", f, f, i === 3 ? 0.7 : 0.18, 0.18, i * 0.14)); },
+  sad() { [392, 370, 349, 262].forEach((f, i) => tone("triangle", f, f * 0.97, i === 3 ? 0.8 : 0.3, 0.15, i * 0.32)); },
+  cheer() { noise(2.2, 0.14, "bandpass", 1400, 0.4, 0, 0.3); for (let i = 0; i < 18; i++) noise(0.03, 0.12, "highpass", 1800, 1, 0.1 + Math.random() * 1.8); }
+};
 function bangGavel(hits = 3) {
   judge.gavel = { t0: now, hits };
-  for (let i = 0; i < hits; i++) setTimeout(thunk, (i * 0.42 + 0.32) * 1000);
+  for (let i = 0; i < hits; i++) setTimeout(sfx.gavel, (i * 0.42 + 0.32) * 1000);
   return wait(hits * 420 + 150);
 }
+
+// Text to speech: each character gets its own voice, pitch and pace
+let voices = [];
+function loadVoices() {
+  if (!window.speechSynthesis) return;
+  const all = speechSynthesis.getVoices();
+  const en = all.filter((v) => /^en[-_]US/i.test(v.lang));
+  voices = en.length ? en : all.filter((v) => /^en/i.test(v.lang));
+}
+if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function voiceFor(c) {
+  if (c === judge) return { v: 0, pitch: 0.7, rate: 0.95 };
+  if (c === counsel.for) return { v: 1, pitch: 1.0, rate: 1.05 };
+  if (c === counsel.against) return { v: 2, pitch: 1.25, rate: 1.05 };
+  const w = witnesses.indexOf(c);
+  if (w >= 0) return { v: 3 + w, pitch: 0.85 + w * 0.15, rate: 1 };
+  const j = jurors.indexOf(c);
+  return { v: j + 1, pitch: 0.8 + (j % 5) * 0.12, rate: 1 + (j % 3) * 0.05 };
+}
+function speak(c, text) {
+  if (!soundOn || !window.speechSynthesis || !text) return;
+  speechSynthesis.cancel();
+  const p = voiceFor(c);
+  // one utterance per sentence; long single utterances get cut off in some browsers
+  (text.match(/[^.!?]+[.!?]*/g) || [text]).forEach((s) => {
+    if (!s.trim()) return;
+    const u = new SpeechSynthesisUtterance(s.trim());
+    if (voices.length) u.voice = voices[p.v % voices.length];
+    u.pitch = p.pitch; u.rate = p.rate; u.lang = "en-US";
+    speechSynthesis.speak(u);
+  });
+}
+function hush() { if (window.speechSynthesis) speechSynthesis.cancel(); }
+
+/* ---------- Juror reasons on hover or tap ---------- */
+const tip = document.getElementById("tip"), tipWho = document.getElementById("tipWho"), tipTxt = document.getElementById("tipTxt");
+const ray = new T.Raycaster(), ndc = new T.Vector2();
+let currentP = null, tipJuror = -1;
+jurors.forEach((c, i) => { c.root.userData.juror = i; });
+function jurorAt(x, y) {
+  if (phase !== "jury" || !currentP || !jurors.some((j) => j.signOn)) return -1;
+  ndc.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects(juryRoot.children, true)[0];
+  if (!hit) return -1;
+  let o = hit.object;
+  while (o && o.userData.juror === undefined) o = o.parent;
+  const i = o ? o.userData.juror : -1;
+  return i >= 0 && jurors[i].signOn && currentP.votes[i] ? i : -1;
+}
+function showTip(i, x, y) {
+  if (i < 0) { tip.hidden = true; host.style.cursor = ""; if (tipJuror >= 0) hush(); tipJuror = -1; return; }
+  const v = currentP.votes[i];
+  if (tipJuror !== i) {
+    tipJuror = i;
+    tipWho.textContent = `${JURORS[i].name}, ${JURORS[i].age} · ${currentP.setup.votes[v.side]}`;
+    tipWho.style.background = v.side === "for" ? "var(--for)" : "var(--against)";
+    tipTxt.textContent = v.reason;
+    tip.hidden = false;
+    speak(jurors[i], v.reason);
+  }
+  host.style.cursor = "pointer";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.transform = `translate(${Math.max(12, Math.min(innerWidth - w - 12, x - w / 2))}px, ${Math.max(12, y - h - 24)}px)`;
+}
+host.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") showTip(jurorAt(e.clientX, e.clientY), e.clientX, e.clientY); });
+host.addEventListener("pointerleave", () => showTip(-1));
+
+const muteBtn = document.getElementById("mute");
+function syncMute() { muteBtn.classList.toggle("off", !soundOn); muteBtn.setAttribute("aria-label", soundOn ? "Turn sound off" : "Turn sound on"); }
+muteBtn.addEventListener("click", () => {
+  soundOn = !soundOn; syncMute();
+  try { localStorage.setItem("court-sound", soundOn ? "on" : "off"); } catch (e) {}
+  if (soundOn) initAudio(); else hush();
+});
+syncMute();
 
 /* ---------- Loop ---------- */
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   now += dt;
   updateCamera();
-  [judge, counsel.for, counsel.against, ...jurors].forEach((c) => updateCritter(c, dt));
+  [judge, counsel.for, counsel.against, ...jurors, ...witnesses].forEach((c) => c && updateCritter(c, dt));
   papers.forEach((p) => {
     p.m.visible = researching;
     if (!researching) return;
@@ -508,6 +657,11 @@ function frame() {
     p.m.material.opacity = 1 - life;
   });
   updateBubble(dt);
+  if (soundOn && audio) {
+    const walker = [counsel.for, counsel.against, ...witnesses].find((c) => c && c.walk);
+    if (walker && now - (walker.lastStep || 0) > 0.2) { walker.lastStep = now; sfx.step(); }
+    if (researching && now - lastPaper > 0.45) { lastPaper = now; sfx.paper(); }
+  }
   tapHint.hidden = !(advanceCb && !bubble.open);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -519,77 +673,214 @@ let sample = null;
 if (window.claude && typeof window.claude.use === "function") window.claude.use("sample").then((s) => { sample = s; });
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const sideName = (side) => side === "for" ? "FOR" : "AGAINST";
-const STAGES = [
-  { side: "for", title: "Opening for the idea", ask: "your opening statement. Say why this idea should go forward." },
-  { side: "against", title: "Opening against the idea", ask: "your opening statement. Say why this idea should not go forward, and answer what opposing counsel just said." },
-  { side: "for", title: "Closing for the idea", ask: "your closing argument. Hit back at the other side's specific points and make your final case." },
-  { side: "against", title: "Closing against the idea", ask: "your closing argument. You speak last. Hit back at the other side's specific points and make your final case." }
-];
+const MAX_WORDS = 10000;
 const FATAL = new Set(["not_granted", "sampling_disabled", "session_expired", "not_declared", "capability_disabled", "cancelled"]);
+const other = (side) => side === "for" ? "against" : "for";
+const COLOR = { for: "var(--for)", against: "var(--against)", judge: "var(--judge)", witness: "var(--witness)" };
+const label = (P, side) => side === "for" ? P.setup.forLabel : P.setup.againstLabel;
+const wordCount = (s) => (s.trim().match(/\S+/g) || []).length;
 
-function researchPrompt(side, idea) {
-  return `You are counsel ${sideName(side)} this idea in a mock trial in the United States. The year is 2026.
+function setupPrompt(file) {
+  return `You are the court clerk setting up a mock trial for a courtroom video game set in the United States in 2026.
 
-Idea on trial: """${idea}"""
+The user submitted this case file:
+"""${file}"""
 
-Research period. You can't browse the web, so work from what you actually know: real studies, data, precedents, places that tried something similar, expert consensus, economics, practical reasoning. Do not invent statistics, studies, quotes or sources. If you're unsure of a number, say "roughly" or leave it out.
+Decide whether this is a LEGAL case (someone is charged with a crime, sued, or accused in a dispute between parties) or an IDEA (a proposal, policy, plan, or opinion to debate). For a legal case, decide whether it's criminal or civil.
 
-Reply with only JSON: {"theory":"one sentence, the core of your case","points":["4 to 6 strong points, each 1-2 sentences, strongest first"]}`;
+For a legal case, list witnesses. If the case file names witnesses, use them (up to 2 per side, the most important ones). If it doesn't, create realistic witnesses who would actually know about the facts in the file, and base what they know only on the file. Don't invent facts that decide the case. The side bringing the case (prosecution or plaintiff) is "for"; the defense is "against".
+
+Reply with only JSON:
+{"kind":"legal" or "idea",
+"legal_type":"criminal" or "civil" (legal only),
+"title":"case caption like 'The People v. Dana Ruiz' or 'Okafor v. Brightline Rentals', or for an idea a short name for it; max 60 characters",
+"summary":"one or two sentences the judge reads aloud to open the case",
+"question":"the exact question the jury decides, one sentence",
+"witnesses":{"for":[{"name":"","role":"short role like 'responding officer'","knows":"1-2 sentences of what they saw or know"}],"against":[same shape]} (legal only, 1 or 2 per side)}`;
+}
+function cleanSetup(s) {
+  if (!s || (s.kind !== "legal" && s.kind !== "idea")) throw { code: "invalid_json" };
+  const legal = s.kind === "legal", type = s.legal_type === "civil" ? "civil" : "criminal";
+  const W = (a) => (Array.isArray(a) ? a : []).slice(0, 2).map((w) => ({ name: String((w && w.name) || "").slice(0, 40), role: String((w && w.role) || "witness").slice(0, 60), knows: String((w && w.knows) || "") })).filter((w) => w.name);
+  const S = {
+    legal, type, title: String(s.title || "The case").slice(0, 80), summary: String(s.summary || ""), question: String(s.question || ""),
+    forLabel: legal ? (type === "civil" ? "Plaintiff" : "Prosecution") : "For", againstLabel: legal ? "Defense" : "Against",
+    witnesses: legal ? { for: W(s.witnesses && s.witnesses.for), against: W(s.witnesses && s.witnesses.against) } : { for: [], against: [] }
+  };
+  S.burden = !legal ? "" : type === "criminal" ? "beyond a reasonable doubt" : "by a preponderance of the evidence, meaning more likely true than not";
+  S.votes = !legal ? { for: "YAY", against: "NAY" } : type === "criminal" ? { for: "GUILTY", against: "NOT GUILTY" } : { for: "LIABLE", against: "NOT LIABLE" };
+  let k = 0;
+  ["for", "against"].forEach((side) => S.witnesses[side].forEach((w, i) => { w.idx = k++; w.side = side; w.slot = i; }));
+  return S;
+}
+function header(P) {
+  const S = P.setup;
+  return S.legal
+    ? `Mock ${S.type} jury trial in the United States, 2026: ${S.title}. The jury must decide: ${S.question}`
+    : `Mock trial in the United States, 2026, putting an idea before a jury: ${S.title}. The jury must decide: ${S.question}`;
+}
+function buildBeats(S) {
+  const B = [], sp = (side, title, ask, words) => B.push({ kind: "speech", side, title, ask, words, line: mkLine() });
+  if (!S.legal) {
+    sp("for", "Opening for the idea", "your opening statement. Say why this idea should go forward.", "120 to 200");
+    sp("against", "Opening against the idea", "your opening statement. Say why this idea should not go forward, and answer what opposing counsel just said.", "120 to 200");
+    sp("for", "Closing for the idea", "your closing argument. Hit back at the other side's specific points and make your final case.", "120 to 200");
+    sp("against", "Closing against the idea", "your closing argument. You speak last. Hit back at the other side's specific points and make your final case.", "120 to 200");
+    return B;
+  }
+  sp("for", "Opening statement", "your opening statement. Tell the jury what the evidence will show and what you'll ask them to decide.", "150 to 250");
+  sp("against", "Opening statement", `your opening statement. Tell the jury the defense's side and why the ${S.forLabel.toLowerCase()} won't meet its burden of proof.`, "150 to 250");
+  ["for", "against"].forEach((side) => S.witnesses[side].forEach((w) => {
+    B.push({ kind: "exam", caller: side, examiner: side, witness: w, direct: true, title: `Direct examination of ${w.name} (${w.role}) by the ${side === "for" ? S.forLabel : S.againstLabel}`, turns: null });
+    B.push({ kind: "exam", caller: side, examiner: other(side), witness: w, direct: false, title: `Cross-examination of ${w.name} by the ${side === "for" ? S.againstLabel : S.forLabel}`, turns: null });
+  }));
+  sp("for", "Closing argument", `your closing argument. Argue from the testimony the jury actually heard and explain why you've proven your case ${S.burden}.`, "180 to 280");
+  sp("against", "Closing argument", `your closing argument. Argue from the testimony the jury actually heard and explain why the ${S.forLabel.toLowerCase()} has not proven its case ${S.burden}.`, "180 to 280");
+  sp("for", "Rebuttal", "your rebuttal, the last word before the jury deliberates. Answer the defense's closing directly.", "80 to 140");
+  return B;
+}
+function openingText(S) {
+  return S.legal
+    ? `Order in the court! We're here in the matter of ${S.title}. ${S.summary} Counsel, prepare your cases.`
+    : `Order in the court! Today we put an idea on trial: ${S.title}. ${S.summary} Counsel, begin your research.`;
+}
+
+function researchPrompt(P, side) {
+  const S = P.setup;
+  const who = S.legal ? `the ${label(P, side)} attorney` : `counsel ${side === "for" ? "FOR" : "AGAINST"} the idea`;
+  const task = S.legal
+    ? "Trial preparation. Using the case file, lay out your theory of the case, the facts and evidence that help you, the other side's weak points, and what you need from each witness. Stick to the case file. Don't invent evidence."
+    : "Research period. You can't browse the web, so work from what you actually know: real studies, data, precedents, places that tried something similar, expert consensus, economics, practical reasoning. Do not invent statistics, studies, quotes or sources. If you're unsure of a number, say \"roughly\" or leave it out.";
+  const wit = S.legal ? `\n\nWitnesses: ${["for", "against"].map((sd) => S.witnesses[sd].map((w) => `${w.name} (${w.role}, called by the ${label(P, sd)}): ${w.knows}`).join("; ")).filter(Boolean).join("; ")}` : "";
+  return `${header(P)}
+
+You are ${who}.
+
+Case file from the user:
+"""${P.file}"""${wit}
+
+${task}
+
+Reply with only JSON: {"theory":"one sentence, the core of your case","points":["4 to 6 key points, each 1-2 sentences, strongest first"]}`;
 }
 function cleanResearch(r) {
   if (!r || typeof r.theory !== "string" || !Array.isArray(r.points) || !r.points.length) throw { code: "invalid_json" };
   return { theory: r.theory, points: r.points.slice(0, 6).map(String) };
 }
 const fileText = (r) => `Theory: ${r.theory}\n- ${r.points.join("\n- ")}`;
-function recordText(P, upTo) {
-  const s = STAGES.slice(0, upTo).map((st, i) => `${st.title}:\n${P.speeches[i].text}`);
-  return s.length ? s.join("\n\n") : "(nothing yet, you speak first)";
+
+function whoName(P, b, who) {
+  if (who === "Q") return `${label(P, b.examiner)} attorney`;
+  if (who === "A") return b.witness.name;
+  if (who === "OBJECTION") return `${label(P, other(b.examiner))} attorney (objecting)`;
+  return "Judge";
 }
-function argPrompt(P, st, i) {
-  return `Mock trial, United States, 2026. You are counsel ${sideName(st.side)} this idea: """${P.idea}"""
+function recordText(P, upTo) {
+  const parts = [];
+  for (let i = 0; i < upTo; i++) {
+    const b = P.beats[i];
+    if (b.kind === "speech") parts.push(`${label(P, b.side)}, ${b.title}:\n${b.line.text}`);
+    else if (b.turns) parts.push(`${b.title}:\n` + b.turns.map((t) => `${whoName(P, b, t.who)}: ${t.text}`).join("\n"));
+  }
+  return parts.length ? parts.join("\n\n") : "(nothing yet, you speak first)";
+}
+function speechPrompt(P, b, i) {
+  const S = P.setup;
+  const who = S.legal ? `the ${label(P, b.side)} attorney` : `counsel ${b.side === "for" ? "FOR" : "AGAINST"} the idea`;
+  return `${header(P)}
 
-Your research:
-${fileText(P.research[st.side])}
+You are ${who}.
 
-What's been said so far:
+Case file from the user:
+"""${P.file}"""
+
+Your trial prep:
+${fileText(P.research[b.side])}
+
+Trial record so far:
 ${recordText(P, i)}
 
-Now give ${st.ask}
+Now give ${b.ask}
 
-This is spoken out loud in a speech bubble in a courtroom video game, so keep it punchy: 60 to 90 words, plain spoken English, like a sharp lawyer talking to a jury. Don't bring in facts beyond your research. No headings, lists, stage directions, or quotation marks around the whole thing. Start talking right away.`;
+This is spoken out loud in speech bubbles in a courtroom video game. ${b.words} words, plain spoken English, like a sharp trial lawyer talking to a jury. ${S.legal ? "Stick to the facts in the case file and the testimony actually given. Reasonable inferences are fine; new evidence is not." : "Don't bring in facts beyond your research."} No headings, lists, stage directions, or quotation marks around the whole thing. Start talking right away.`;
 }
-const fullRecord = (P) => `RESEARCH FOR:\n${fileText(P.research.for)}\n\nRESEARCH AGAINST:\n${fileText(P.research.against)}\n\nTRANSCRIPT:\n${recordText(P, 4)}`;
+function examPrompt(P, b, i) {
+  const w = b.witness, ex = label(P, b.examiner), opp = label(P, other(b.examiner));
+  return `${header(P)}
+
+Case file from the user:
+"""${P.file}"""
+
+Trial prep for the ${ex}:
+${fileText(P.research[b.examiner])}
+
+Trial record so far:
+${recordText(P, i)}
+
+Now write the ${b.direct ? "DIRECT examination" : "CROSS-examination"} of ${w.name}, ${w.role}, a witness called by the ${label(P, w.side)}. What ${w.name} knows: ${w.knows}
+
+The ${ex} attorney asks the questions. ${b.direct ? "Use open questions that let the witness tell the story in their own words." : "Use short, pointed leading questions that test the witness's memory, bias, or gaps, building toward the ${ex}'s theory."}
+The witness answers in character, consistent with the case file and anything they already said, 1 to 3 sentences per answer. They don't volunteer facts that aren't in the file; they can say they don't know or don't remember.
+At most one objection may happen, and only if a question is actually improper (leading on direct, hearsay, speculation, argumentative, asked and answered, assumes facts). The ${opp} attorney objects in a few words naming the ground; the judge rules "Sustained." or "Overruled." with at most one short sentence. If sustained, the attorney rephrases or moves on.
+
+Write 8 to 14 turns, ending with "No further questions." from the attorney.
+Reply with only JSON: {"turns":[{"who":"Q" or "A" or "OBJECTION" or "JUDGE","text":"..."}]}`;
+}
+function cleanTurns(r) {
+  const ok = new Set(["Q", "A", "OBJECTION", "JUDGE"]);
+  const t = ((r && r.turns) || []).map((x) => ({ who: String((x && x.who) || "").toUpperCase(), text: String((x && x.text) || "").trim().slice(0, 900) })).filter((x) => ok.has(x.who) && x.text).slice(0, 16);
+  if (t.length < 2) throw { code: "invalid_json" };
+  return t;
+}
 function jurorPrompt(P, j, i) {
-  return `You are Juror No. ${i + 1} in a mock trial in the United States.
+  const S = P.setup;
+  const evidence = S.legal
+    ? `Everything presented at trial (you only know what was said in court):\n${recordText(P, P.beats.length)}\n\nThe judge's instructions: the ${S.forLabel.toLowerCase()} must prove its case ${S.burden}. Vote ${S.votes.for} only if it did; otherwise vote ${S.votes.against}.`
+    : `The idea as filed:\n"""${P.file}"""\n\nResearch each side brought:\nFOR:\n${fileText(P.research.for)}\nAGAINST:\n${fileText(P.research.against)}\n\nTranscript:\n${recordText(P, P.beats.length)}\n\nVote YAY if the idea should go forward, NAY if not.`;
+  return `You are Juror No. ${i + 1} in a mock trial in the United States: ${S.title}. The question: ${S.question}
 
 Who you are: ${j.name}, ${j.age}, ${j.job}. ${j.voice}
 
-The idea on trial: """${P.idea}"""
+${evidence}
 
-Everything presented in court:
-${fullRecord(P)}
+Secret ballot. You haven't talked to the other jurors and can't see their votes. Decide for yourself, as the person described. Your personality shapes what you notice, but follow the evidence and arguments.
 
-Secret ballot. You haven't talked to the other jurors and can't see their votes. Decide for yourself, as the person described, based on what was argued. YAY means the idea should go forward, NAY means it shouldn't. Your personality shapes what you care about, but follow the arguments.
-
-Reply with only JSON: {"vote":"YAY" or "NAY","reason":"one or two sentences in your own voice"}`;
+Reply with only JSON: {"vote":"${S.votes.for}" or "${S.votes.against}","reason":"one or two sentences in your own voice"}`;
 }
 function judgePrompt(P) {
-  const R = P.ruling;
-  const lines = P.votes.map((v, i) => v ? `${JURORS[i].name} (${JURORS[i].job}): ${v.vote}. "${v.reason}"` : `${JURORS[i].name}: excused`).join("\n");
-  return `You are the judge in a mock trial in the United States, speaking out loud from the bench in a courtroom video game.
+  const S = P.setup, R = P.ruling;
+  const lines = P.votes.map((v, i) => v ? `${JURORS[i].name} (${JURORS[i].job}): ${S.votes[v.side]}. "${v.reason}"` : `${JURORS[i].name}: excused`).join("\n");
+  const close = S.legal
+    ? "say in one sentence what the jury found most convincing, and say what happens next (sentencing at a later date, damages, or a possible retrial if hung). Don't name a specific sentence or dollar amount unless the case file supports it."
+    : "say which argument carried it, and give the person who filed the idea one piece of practical advice.";
+  return `You are the judge, speaking from the bench in a courtroom video game. ${header(P)}
 
-The idea on trial: """${P.idea}"""
+Case file:
+"""${P.file}"""
 
-Record:
-${fullRecord(P)}
+Trial record:
+${recordText(P, P.beats.length)}
 
-Secret ballot: ${R.y} YAY, ${R.n} NAY.
+Secret ballot: ${R.f} ${S.votes.for}, ${R.a} ${S.votes.against}.
 ${lines}
 
-Result: ${R.text} You must announce this result and can't overturn it.${R.kind === "hung" ? " Since the jury split evenly, also give your own non-binding view of who argued better." : ""}
+Result under the rules: ${R.text} You must announce this result and can't change it.
 
-Deliver the verdict out loud in 3 or 4 sentences, at most 85 words: announce the result with the vote count, say which argument carried it, and give the person who filed the idea one piece of practical advice. Plain spoken with a little courtroom flavor. No headings or lists. Start speaking right away.`;
+Deliver the verdict out loud in 4 to 6 sentences, at most 130 words: announce the result with the vote count, ${close} Plain spoken with courtroom flavor. No headings or lists. Start speaking right away.`;
+}
+function computeRuling(P) {
+  const S = P.setup, f = P.votes.filter((v) => v && v.side === "for").length, a = P.votes.filter((v) => v && v.side === "against").length, n = f + a;
+  const out = (kind, text) => ({ kind, f, a, text });
+  if (!S.legal) return f > a ? out("for", `The jury voted ${f} to ${a} in favor. The idea is upheld.`) : a > f ? out("against", `The jury voted ${a} to ${f} against. The idea is rejected.`) : out("hung", `The jury split ${f} to ${a}. It's a hung jury.`);
+  if (S.type === "criminal") {
+    if (f === n) return out("for", `The jury unanimously found the defendant guilty, ${f} to 0.`);
+    if (a === n) return out("against", `The jury unanimously found the defendant not guilty, ${a} to 0.`);
+    return out("hung", `The jury split ${f} guilty to ${a} not guilty. A criminal verdict must be unanimous, so this is a hung jury and the court declares a mistrial.`);
+  }
+  const need = Math.ceil(n * 0.75);
+  if (f >= need) return out("for", `${f} of ${n} jurors found the defendant liable, meeting the three-fourths requirement. Verdict for the plaintiff.`);
+  if (a >= need) return out("against", `${a} of ${n} jurors found the defendant not liable, meeting the three-fourths requirement. Verdict for the defense.`);
+  return out("hung", `The jury split ${f} liable to ${a} not liable, short of the ${need} needed. It's a hung jury and the court declares a mistrial.`);
 }
 
 const mkLine = (text) => ({ text: text || "", done: !!text, error: null });
@@ -598,43 +889,101 @@ async function pool(items, limit, fn) {
   await Promise.all(Array.from({ length: limit }, async () => { while (next < items.length) { const i = next++; await fn(items[i], i); } }));
 }
 
-function startPipeline(idea, signal) {
-  const P = { idea, research: {}, speeches: STAGES.map(() => mkLine()), votes: Array(12).fill(null), voted: Array(12).fill(false), verdict: mkLine(), fatal: null };
+function startPipeline(file, signal) {
+  const P = { file, setup: null, research: {}, beats: [], votes: Array(12).fill(null), voted: Array(12).fill(false), opening: mkLine(), verdict: mkLine(), fatal: null };
   const fail = (e) => { if (!P.fatal) P.fatal = e || { code: "upstream_error" }; throw P.fatal; };
-  const runLine = (line, prompt) => sample(prompt, { signal, cache: false, onText: ({ text }) => { line.text = text; } })
-    .then((r) => { line.text = r.text.trim(); line.done = true; });
-  P.researchP = Promise.all(["for", "against"].map((side) =>
-    sample.json(researchPrompt(side, idea), { signal, cache: false }).then((r) => { P.research[side] = cleanResearch(r); })
-  )).catch(fail);
-  let chain = P.researchP;
-  STAGES.forEach((st, i) => { chain = chain.then(() => runLine(P.speeches[i], argPrompt(P, st, i)).catch(fail)); });
-  P.votesP = chain.then(() => pool(JURORS, 3, async (j, i) => {
+  const runLine = (line, prompt) => sample(prompt, { signal, cache: false, onText: ({ text }) => { line.text = text; } }).then((r) => { line.text = r.text.trim(); line.done = true; });
+  P.setupP = sample.json(setupPrompt(file), { signal, cache: false }).then((s) => {
+    P.setup = cleanSetup(s); P.beats = buildBeats(P.setup);
+    P.opening.text = openingText(P.setup); P.opening.done = true;
+  }).catch(fail);
+  P.researchP = P.setupP.then(() => Promise.all(["for", "against"].map((side) =>
+    sample.json(researchPrompt(P, side), { signal, cache: false }).then((r) => { P.research[side] = cleanResearch(r); })
+  ))).catch(fail);
+  P.beatsP = P.researchP.then(async () => {
+    for (let i = 0; i < P.beats.length; i++) {
+      const b = P.beats[i];
+      if (b.kind === "speech") await runLine(b.line, speechPrompt(P, b, i));
+      else b.turns = cleanTurns(await sample.json(examPrompt(P, b, i), { signal, cache: false }));
+    }
+  }).catch(fail);
+  P.votesP = P.beatsP.then(() => pool(JURORS, 3, async (j, i) => {
     try {
       const v = await sample.json(jurorPrompt(P, j, i), { signal, cache: false });
-      const vote = String((v && v.vote) || "").toUpperCase();
-      if (vote === "YAY" || vote === "NAY") P.votes[i] = { vote, reason: String(v.reason || "") };
+      const raw = String((v && v.vote) || "").toUpperCase().trim();
+      const side = raw === P.setup.votes.for ? "for" : raw === P.setup.votes.against ? "against" : null;
+      if (side) P.votes[i] = { side, reason: String(v.reason || "") };
     } catch (e) {
       if (e && FATAL.has(e.code)) fail(e);
     }
     P.voted[i] = true;
-    if (phase === "jury") setMode(jurors[i], P.votes[i] ? "sealed" : "idle");
+    if (phase === "jury") { setMode(jurors[i], P.votes[i] ? "sealed" : "idle"); if (P.votes[i]) sfx.seal(); }
   })).then(() => {
-    const y = P.votes.filter((v) => v && v.vote === "YAY").length, n = P.votes.filter((v) => v && v.vote === "NAY").length;
-    if (!y && !n) fail({ code: "upstream_error" });
-    P.ruling = y > n ? { kind: "yay", y, n, text: `The jury voted ${y} to ${n} in favor. The idea is upheld.` }
-      : n > y ? { kind: "nay", y, n, text: `The jury voted ${n} to ${y} against. The idea is rejected.` }
-      : { kind: "hung", y, n, text: `The jury split ${y} to ${n}. It's a hung jury.` };
+    if (!P.votes.some(Boolean)) fail({ code: "upstream_error" });
+    P.ruling = computeRuling(P);
   });
   P.verdictP = P.votesP.then(() => runLine(P.verdict, judgePrompt(P)).catch(fail));
-  [P.researchP, P.votesP, P.verdictP].forEach((p) => p.catch(() => {}));
+  [P.researchP, P.beatsP, P.votesP, P.verdictP].forEach((p) => p.catch(() => {}));
   return P;
 }
 
+/* ---------- Witnesses ---------- */
+let witnesses = [];
+function dressWitness(c, w, i) {
+  const r = (w.role + " " + w.name).toLowerCase(), b = c.body;
+  if (/officer|police|detective|deputy|sheriff|trooper|agent|sergeant/.test(r)) {
+    box(b, 0.84, 0.2, 0.64, 0x1f2a44, 0, 1.24, 0); box(b, 0.7, 0.04, 0.3, 0x111111, 0, 1.15, 0.42); box(b, 0.12, 0.1, 0.02, 0xf2c230, 0, 1.25, 0.325, false);
+  } else if (/doctor|dr\.|physician|nurse|expert|scientist|examiner|analyst|engineer|professor|pathologist/.test(r)) {
+    box(b, 1.04, 0.36, 0.66, 0xf4f4f4, 0, 0.6, 0); box(b, 0.66, 0.05, 0.03, INK, 0, 0.97, 0.33, false); [-0.33, -0.07, 0.07, 0.33].forEach((x) => box(b, 0.035, 0.27, 0.03, INK, x, 0.84, 0.33, false));
+  } else {
+    [
+      () => { box(b, 0.6, 0.26, 0.5, 0x3b3b3b, 0, 1.3, 0); box(b, 1.1, 0.04, 0.85, 0x3b3b3b, 0, 1.17, 0); box(b, 0.61, 0.06, 0.51, 0x8b1e3f, 0, 1.2, 0); },
+      () => { box(b, 1.04, 0.12, 0.66, 0x2f7fb3, 0, 0.62, 0); box(b, 0.14, 0.28, 0.04, 0x2f7fb3, 0.25, 0.46, 0.34); },
+      () => { box(b, 0.9, 0.1, 0.7, 0x8b1e3f, 0.05, 1.19, 0); box(b, 0.1, 0.08, 0.1, 0x8b1e3f, 0.05, 1.27, 0); },
+      () => { box(b, 0.12, 0.12, 0.03, 0x6a3fb5, 0, 0.62, 0.33, false); box(b, 0.12, 0.18, 0.03, 0x6a3fb5, -0.12, 0.62, 0.33, false); box(b, 0.12, 0.18, 0.03, 0x6a3fb5, 0.12, 0.62, 0.33, false); }
+    ][i % 4]();
+  }
+}
+const WIT_FACE = new T.Vector3(3, 0, 3);
+const seatOf = (side, k) => new T.Vector3(side === "for" ? -2.4 - k * 1.3 : 2.4 + k * 1.3, 0.675, 4.8);
+function spawnWitnesses(S) {
+  ["for", "against"].forEach((side) => S.witnesses[side].forEach((w) => {
+    const c = critter(0.95);
+    dressWitness(c, w, w.idx);
+    c.seat = seatOf(side, w.slot);
+    c.root.position.copy(c.seat);
+    c.root.rotation.y = Math.PI;
+    c.face = JUDGE_SPOT;
+    scene.add(c.root);
+    witnesses[w.idx] = c;
+  }));
+}
+function clearWitnesses() { witnesses.forEach((c) => c && scene.remove(c.root)); witnesses = []; }
+async function walkPath(c, pts) {
+  for (const p of pts) { const d = c.root.position.distanceTo(p); await walkTo(c, p, Math.max(0.4, d / 2.8)); }
+}
+const toStand = (c) => [new T.Vector3(c.seat.x, 0, 4.1), new T.Vector3(0, 0, 4.1), new T.Vector3(0, 0, 2.6), new T.Vector3(-3.4, 0, -3.4), WIT_STAND.clone()];
+const toSeat = (c) => [new T.Vector3(-3.4, 0, -3.4), new T.Vector3(0, 0, 2.6), new T.Vector3(0, 0, 4.1), new T.Vector3(c.seat.x, 0, 4.1), c.seat.clone()];
+
 /* ---------- Director ---------- */
 let trialId = 0, ctl = null, phase = "home";
-const dock = document.getElementById("dock"), ideaBox = document.getElementById("idea"), quitBtn = document.getElementById("quit");
+const dock = document.getElementById("dock"), ideaBox = document.getElementById("idea"), quitBtn = document.getElementById("quit"), countEl = document.getElementById("count");
+function syncBox() {
+  ideaBox.style.height = "auto";
+  ideaBox.style.height = Math.min(ideaBox.scrollHeight, innerHeight * 0.4) + "px";
+  const n = wordCount(ideaBox.value);
+  countEl.hidden = n < 40;
+  countEl.textContent = n.toLocaleString() + " / " + MAX_WORDS.toLocaleString() + " words";
+  countEl.classList.toggle("over", n > MAX_WORDS);
+  try { localStorage.setItem("court-idea", ideaBox.value); } catch (e) {}
+}
 try { const d = localStorage.getItem("court-idea"); if (d) ideaBox.value = d; } catch (e) {}
-ideaBox.addEventListener("input", () => { try { localStorage.setItem("court-idea", ideaBox.value); } catch (e) {} });
+ideaBox.addEventListener("input", syncBox);
+ideaBox.addEventListener("keydown", (e) => {
+  const short = !ideaBox.value.includes("\n") && ideaBox.value.length < 300;
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey || (short && !e.shiftKey))) { e.preventDefault(); dock.requestSubmit(); }
+});
+syncBox();
 
 function errCopy(e) {
   switch (e && e.code) {
@@ -642,7 +991,8 @@ function errCopy(e) {
     case "sampling_disabled": return "Claude isn't available on this account, so court can't be held.";
     case "rate_limited": return "The court is swamped. Give it a minute, then file again.";
     case "session_expired": return "Your session expired. Sign back in and refile the case.";
-    case "refused": return "I won't hear that one. Reword the idea and file again.";
+    case "prompt_too_large": return "That case file is too long for the court record. Trim it down and refile.";
+    case "refused": return "I won't hear that one. Reword the case and file again.";
     default: return "Something went wrong with the court record. File the case again.";
   }
 }
@@ -651,7 +1001,10 @@ function resetCourt() {
   [counsel.for, counsel.against].forEach((c, i) => { c.walk = null; c.root.position.copy(i ? SPOT.against : SPOT.for); c.face = JUDGE_SPOT; setMode(c, "idle"); });
   jurors.forEach((c) => { c.signOn = false; c.face = JURY_LOOK; setMode(c, "idle"); });
   judge.face = new T.Vector3(0, 0, 5); setMode(judge, "idle");
+  clearWitnesses();
   researching = false;
+  if (typeof showTip === "function") showTip(-1);
+  hush();
   closeBubble();
   advanceCb = null;
 }
@@ -659,31 +1012,117 @@ resetCourt();
 counsel.for.root.rotation.y = counsel.against.root.rotation.y = Math.PI;
 jurors.forEach((c) => { c.root.rotation.y = -Math.PI / 2; });
 
-async function say(c, label, color, line, P) {
-  openBubble(c, label, color, line);
-  if (c !== judge) setMode(c, "talk");
-  while (!line.done) {
-    if (P && P.fatal) { if (c !== judge) setMode(c, "idle"); throw P.fatal; }
-    await wait(120);
+const PAGE_WORDS = 48;
+function paginate(text) {
+  const sents = text.match(/[^.!?]+(?:[.!?]+["'”’)\]]*|$)\s*/g) || (text ? [text] : []);
+  const pages = []; let cur = "", n = 0;
+  for (const s of sents) {
+    const w = wordCount(s);
+    if (cur && n + w > PAGE_WORDS) { pages.push(cur.trim()); cur = ""; n = 0; }
+    cur += s; n += w;
   }
-  await waitAdvance();
-  if (c !== judge) setMode(c, "idle");
-  closeBubble();
+  if (cur.trim()) pages.push(cur.trim());
+  return pages;
+}
+
+// Shows a line one bubble page at a time; resolves after the last page is tapped through.
+async function say(c, who, color, line, P, mode = "talk") {
+  let idx = 0;
+  const view = {
+    get text() { return paginate(line.text)[idx] || ""; },
+    get done() { return line.done || paginate(line.text).length > idx + 1; }
+  };
+  openBubble(c, who, color, view);
+  sfx.blip();
+  if (c !== judge) setMode(c, mode);
+  if (phase !== "jury" && phase !== "verdict") jurors.forEach((j) => { j.face = c.root.position; });
+  try {
+    for (;;) {
+      while (!view.done) {
+        if (P && P.fatal) throw P.fatal;
+        await wait(120);
+      }
+      speak(c, view.text);
+      await waitAdvance();
+      hush();
+      if (line.done && idx >= paginate(line.text).length - 1) break;
+      idx++;
+      bubble.shown = 0; bubble.lastLen = -1;
+    }
+  } finally {
+    hush();
+    if (c !== judge) setMode(c, "idle");
+    closeBubble();
+  }
+}
+async function until(P, test) {
+  while (!test()) { if (P.fatal) throw P.fatal; await wait(150); }
+}
+
+async function playSpeech(P, b, chk) {
+  const c = counsel[b.side];
+  camTo("tables", 1.0);
+  await walkTo(c, PODIUM, 1.7); chk();
+  c.face = new T.Vector3(3, 0, 5);
+  camTo("podium", 1.2);
+  await wait(600); chk();
+  await say(c, label(P, b.side), COLOR[b.side], b.line, P); chk();
+  c.face = null;
+  await walkTo(c, SPOT[b.side], 1.5); chk();
+  c.face = JUDGE_SPOT;
+}
+
+async function playExam(P, b, chk) {
+  const w = b.witness, wc = witnesses[w.idx], ex = counsel[b.examiner], opp = counsel[other(b.examiner)];
+  const exLabel = label(P, b.examiner), oppLabel = label(P, other(b.examiner));
+  if (b.direct) {
+    camTo("tables", 1.1);
+    await say(ex, exLabel, COLOR[b.examiner], mkLine(`The ${exLabel.toLowerCase()} calls ${w.name} to the stand.`), P); chk();
+    camTo("exam", 1.6);
+    wc.face = null;
+    await walkPath(wc, toStand(wc)); chk();
+    wc.face = WIT_FACE;
+    setMode(wc, "oath");
+    await say(judge, "The Judge", COLOR.judge, mkLine("Please raise your right hand. Do you swear to tell the truth, the whole truth, and nothing but the truth?"), P); chk();
+    await say(wc, w.name, COLOR.witness, mkLine("I do."), P, "oath"); chk();
+  }
+  camTo("exam", 1.0);
+  await walkTo(ex, PODIUM, 1.6); chk();
+  ex.face = WIT_STAND;
+  if (!b.turns) { setMode(ex, "think"); await until(P, () => b.turns); chk(); setMode(ex, "idle"); }
+  let cut = "exam";
+  const shotFor = (s) => { if (cut !== s) { camTo(s, 0.7); cut = s; } };
+  for (const t of b.turns) {
+    if (t.who === "Q") { shotFor("exam"); await say(ex, exLabel, COLOR[b.examiner], mkLine(t.text), P); }
+    else if (t.who === "A") { shotFor("exam"); await say(wc, w.name, COLOR.witness, mkLine(t.text), P); }
+    else if (t.who === "OBJECTION") { shotFor("tables"); sfx.objection(); await say(opp, oppLabel, COLOR[other(b.examiner)], mkLine(t.text), P, "object"); }
+    else { shotFor("judge"); await say(judge, "The Judge", COLOR.judge, mkLine(t.text), P); }
+    chk();
+  }
+  ex.face = null;
+  camTo("exam", 0.8);
+  await walkTo(ex, SPOT[b.examiner], 1.5); chk();
+  ex.face = JUDGE_SPOT;
+  if (!b.direct) {
+    wc.face = null;
+    await walkPath(wc, toSeat(wc)); chk();
+    wc.face = JUDGE_SPOT;
+  }
 }
 
 function showHome() {
   phase = "home";
   dock.hidden = false; quitBtn.hidden = true;
   camTo("orbit");
+  syncBox();
 }
 
-async function trial(idea) {
+async function trial(file) {
   const my = ++trialId;
   const chk = () => { if (my !== trialId) throw { code: "cancelled" }; };
   ctl = new AbortController();
   dock.hidden = true; quitBtn.hidden = false; ideaBox.blur();
-  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
-  if (!signTex) makeSignTex();
+  initAudio();
   resetCourt();
   let P = null;
   try {
@@ -691,13 +1130,15 @@ async function trial(idea) {
     camTo("judge", 1.8);
     if (!sample) {
       await wait(1200);
-      await say(judge, "The Judge", "var(--judge)", mkLine("I can only hold court inside Claude. Open this page there and file your case again."));
+      await say(judge, "The Judge", COLOR.judge, mkLine("I can only hold court inside Claude. Open this page there and file your case again."));
       return;
     }
-    P = startPipeline(idea, ctl.signal);
+    P = startPipeline(file, ctl.signal);
+    currentP = P;
     await wait(1300); chk();
     await bangGavel(3); chk();
-    await say(judge, "The Judge", "var(--judge)", mkLine(`Order in the court! Today's case: "${idea}" Counsel, you may begin your research.`), P); chk();
+    P.setupP.then(() => { if (my === trialId) { spawnWitnesses(P.setup); makeSignTex(P.setup.votes); } }).catch(() => {});
+    await say(judge, "The Judge", COLOR.judge, P.opening, P); chk();
 
     phase = "research";
     camTo("tables", 1.6);
@@ -710,24 +1151,20 @@ async function trial(idea) {
     await wait(500); chk();
 
     phase = "args";
-    for (let i = 0; i < STAGES.length; i++) {
-      const side = STAGES[i].side, c = counsel[side];
-      camTo("tables", 1.0);
-      jurors.forEach((j) => { j.face = c.root.position; });
-      await walkTo(c, PODIUM, 1.7); chk();
-      c.face = new T.Vector3(3, 0, 5);
-      camTo("podium", 1.2);
-      await wait(700); chk();
-      await say(c, side === "for" ? "Counsel for" : "Counsel against", side === "for" ? "var(--for)" : "var(--against)", P.speeches[i], P); chk();
-      c.face = null;
-      await walkTo(c, SPOT[side], 1.5); chk();
-      c.face = JUDGE_SPOT;
+    for (const b of P.beats) {
+      if (b.kind === "speech") await playSpeech(P, b, chk);
+      else await playExam(P, b, chk);
     }
 
     phase = "jury";
-    jurors.forEach((j) => { j.face = JURY_LOOK; });
+    const S = P.setup;
+    jurors.forEach((j) => { j.face = JUDGE_SPOT; });
     camTo("judge", 1.3);
-    await say(judge, "The Judge", "var(--judge)", mkLine("Jurors, you've heard both sides. Cast your secret ballots."), P); chk();
+    const charge = !S.legal ? "Jurors, you've heard both sides. Cast your secret ballots."
+      : S.type === "criminal" ? `Members of the jury, the prosecution must prove its case beyond a reasonable doubt. If it has, your verdict is guilty. If not, not guilty. Your verdict must be unanimous. Please cast your secret ballots.`
+      : `Members of the jury, the plaintiff must prove its case by a preponderance of the evidence, meaning more likely true than not. At least nine of you must agree on the verdict. Please cast your secret ballots.`;
+    await say(judge, "The Judge", COLOR.judge, mkLine(charge), P); chk();
+    jurors.forEach((j) => { j.face = JURY_LOOK; });
     camTo("jury", 1.6);
     jurors.forEach((j, i) => setMode(j, P.voted[i] ? (P.votes[i] ? "sealed" : "idle") : "think"));
     await P.votesP.catch(() => {}); chk();
@@ -735,41 +1172,44 @@ async function trial(idea) {
     await wait(900); chk();
     for (let i = 0; i < 12; i++) {
       const v = P.votes[i], j = jurors[i];
-      if (v) { j.signFace.map = signTex[v.vote]; j.signFace.needsUpdate = true; j.signOn = true; setMode(j, v.vote.toLowerCase()); }
+      if (v) { j.signFace.map = signTex[v.side]; j.signFace.needsUpdate = true; j.signOn = true; setMode(j, v.side === "for" ? "yay" : "nay"); sfx.pop(v.side); }
       await wait(reduced ? 80 : 380); chk();
     }
     await waitAdvance(); chk();
 
+    showTip(-1);
     phase = "verdict";
     jurors.forEach((j) => { j.signOn = false; setMode(j, "lookup"); j.face = JUDGE_SPOT; });
     camTo("judge", 1.6);
     await wait(1200); chk();
+    sfx.murmur();
     await bangGavel(2); chk();
-    await say(judge, "The Judge", "var(--judge)", P.verdict, P); chk();
+    await say(judge, "The Judge", COLOR.judge, P.verdict, P); chk();
     await bangGavel(1); chk();
 
     camTo("wide", 2);
     const k = P.ruling.kind;
-    setMode(counsel.for, k === "yay" ? "cheer" : k === "nay" ? "sad" : "shrug");
-    setMode(counsel.against, k === "nay" ? "cheer" : k === "yay" ? "sad" : "shrug");
+    if (k === "hung") sfx.sad(); else { sfx.fanfare(); setTimeout(sfx.cheer, 500); }
+    setMode(counsel.for, k === "for" ? "cheer" : k === "against" ? "sad" : "shrug");
+    setMode(counsel.against, k === "against" ? "cheer" : k === "for" ? "sad" : "shrug");
     counsel.for.face = counsel.against.face = new T.Vector3(0, 0, 12);
-    jurors.forEach((j, i) => { const v = P.votes[i]; setMode(j, !v ? "idle" : (k === "hung" ? "idle" : (v.vote.toLowerCase() === k ? "cheer" : "idle"))); j.face = JURY_LOOK; });
+    jurors.forEach((j, i) => { const v = P.votes[i]; setMode(j, v && v.side === k ? "cheer" : "idle"); j.face = JURY_LOOK; });
     await wait(3200); chk();
   } catch (e) {
     if (my !== trialId || (e && e.code === "cancelled")) return;
     researching = false;
     camTo("judge", 1);
-    await say(judge, "The Judge", "var(--judge)", mkLine(errCopy(e))).catch(() => {});
+    await say(judge, "The Judge", COLOR.judge, mkLine(errCopy(e))).catch(() => {});
   } finally {
     if (my === trialId) { if (ctl) ctl.abort(); showHome(); }
   }
 }
 
-document.getElementById("dock").addEventListener("submit", (ev) => {
+dock.addEventListener("submit", (ev) => {
   ev.preventDefault();
-  const idea = ideaBox.value.trim();
-  if (idea.length < 4) { ideaBox.focus(); return; }
-  trial(idea);
+  const file = ideaBox.value.trim();
+  if (file.length < 4 || wordCount(file) > MAX_WORDS) { ideaBox.focus(); return; }
+  trial(file);
 });
 quitBtn.addEventListener("click", () => {
   trialId++;
