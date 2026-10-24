@@ -60,18 +60,25 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 
 #tip { position: absolute; left: 0; top: 0; z-index: 7; max-width: min(300px, calc(100vw - 24px)); background: var(--paper); border: 3px solid var(--ink); border-radius: 16px; padding: 16px 14px 12px; font-size: 15px; line-height: 1.38; box-shadow: 0 5px 0 rgba(0, 0, 0, .3); pointer-events: none; }
 #tip .who { top: -13px; left: 12px; font-size: 11.5px; }
+#ff { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 24px; z-index: 6; height: 52px; padding: 0 18px 0 14px; border-radius: 26px; border: 3px solid var(--ink); background: var(--judge); cursor: pointer; display: flex; align-items: center; gap: 2px; box-shadow: 0 5px 0 rgba(0, 0, 0, .35); animation: ffIn .35s cubic-bezier(.3, 1.6, .5, 1), ffPulse 1.4s ease-in-out .4s infinite; }
+#ff:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
+@keyframes ffIn { from { transform: scale(.4); opacity: 0; } }
+@keyframes ffPulse { 50% { transform: scale(1.07); } }
 #mute { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); z-index: 6; width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); cursor: pointer; display: grid; place-items: center; }
 #mute .x { display: none; } #mute.off .x { display: inline; } #mute.off .w { display: none; }
 #mute:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .bubble.pop, .next, #tapHint, .txt.wait i { animation: none; }
+  .bubble.pop, .next, #tapHint, .txt.wait i, #ff { animation: none; }
 }
 </style>
 
 <div id="game"></div>
 <div class="bubble" id="bubble" hidden><span class="who" id="who"></span><div class="txt" id="txt"></div><span class="next" id="next" hidden></span><span class="tail" id="tail"></span></div>
 <div id="tapHint" hidden></div>
+<button id="ff" type="button" aria-label="Skip to the jury vote" hidden>
+  <svg width="34" height="24" viewBox="0 0 34 24" aria-hidden="true"><path d="M2 3l13 9-13 9zM16 3l13 9-13 9z" fill="#2a1c12"/><rect x="29" y="3" width="3.5" height="18" rx="1" fill="#2a1c12"/></svg>
+</button>
 <div id="tip" hidden><span class="who" id="tipWho"></span><div id="tipTxt"></div></div>
 <button id="mute" type="button" aria-label="Turn sound off">
   <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#2a1c12"/><path class="w" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="#2a1c12" stroke-width="2.2" fill="none" stroke-linecap="round"/><path class="x" d="M16 9l6 6M22 9l-6 6" stroke="#2a1c12" stroke-width="2.4" stroke-linecap="round"/></svg>
@@ -452,7 +459,7 @@ const bubble = { open: false, who: null, line: null, shown: 0, lastLen: -1 };
 const WAIT_DOTS = "<i></i><i></i><i></i>";
 
 function openBubble(c, label, color, line) {
-  bubble.open = true; bubble.who = c; bubble.line = line; bubble.shown = 0; bubble.lastLen = -1;
+  bubble.open = true; bubble.who = c; bubble.line = line; bubble.shown = 0; bubble.lastLen = -1; bubble.openedAt = now;
   whoEl.textContent = label;
   bubbleEl.style.setProperty("--who", color);
   txtEl.className = "txt wait"; txtEl.innerHTML = WAIT_DOTS;
@@ -503,7 +510,8 @@ function onTap(e) {
     if (j >= 0) { showTip(j, e.clientX, e.clientY); return; }
     if (!tip.hidden) showTip(-1);
   }
-  if (bubble.open && !bubbleComplete()) { if (bubble.line.done) bubble.shown = bubble.line.text.length; return; }
+  if (bubble.open && !bubbleComplete()) { noteQuick(); if (bubble.line.done) bubble.shown = bubble.line.text.length; return; }
+  if (bubble.open && now - bubble.openedAt < 2.5) noteQuick();
   if (advanceCb) { const cb = advanceCb; advanceCb = null; sfx.click(); cb(); }
 }
 host.addEventListener("pointerdown", onTap);
@@ -566,34 +574,77 @@ function bangGavel(hits = 3) {
   return wait(hits * 420 + 150);
 }
 
-// Text to speech: each character gets its own voice, pitch and pace
+// Text to speech. Picks the most natural voices the device has, skips the novelty ones,
+// and gives each character a distinct voice instead of bending pitch.
+const NOVELTY = /bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|albert|\bfred\b|junior|ralph|kathy|deranged|hysterical|grandma|grandpa|eddy|\bflo\b|reed|rocko|sandy|shelley/i;
+const FEMALE = /female|samantha|\bava\b|allison|susan|victoria|karen|moira|tessa|fiona|zira|aria|jenny|michelle|emma|sonia|libby|joelle|noelle|\bzoe\b|serena|\bkate\b|catherine|nicky|salli|joanna|kendra|kimberly|\bivy\b|ruth|ana\b|jane|nancy|sara|ashley|cora|elizabeth|google us english/i;
+const MALE = /\bmale\b|\balex\b|daniel|\btom\b|aaron|evan|nathan|david|\bmark\b|\bguy\b|ryan|eric|christopher|brian|andrew|oliver|rishi|\blee\b|gordon|arthur|matthew|justin|joey|roger|davis|tony|jason|steffan|thomas|george|james/i;
+const voiceGender = (v) => FEMALE.test(v.name) ? "f" : MALE.test(v.name) ? "m" : "?";
+function voiceScore(v) {
+  let s = 0;
+  if (/natural|neural/i.test(v.name)) s += 6;
+  if (/online/i.test(v.name)) s += 2;
+  if (/premium|enhanced/i.test(v.name)) s += 5;
+  if (/^google/i.test(v.name)) s += 3;
+  if (/samantha|\bava\b|allison|\btom\b|evan|nathan|\bzoe\b|joelle|noelle|\balex\b|aria|jenny|guy|andrew|emma|brian/i.test(v.name)) s += 2;
+  if (/^en[-_]US/i.test(v.lang)) s += 1.5;
+  if (v.default) s += 0.5;
+  return s;
+}
+const JUROR_G = ["f", "m", "f", "m", "f", "m", "m", "f", "m", "f", "m", "f"];
 let voices = [];
 function loadVoices() {
   if (!window.speechSynthesis) return;
-  const all = speechSynthesis.getVoices();
-  const en = all.filter((v) => /^en[-_]US/i.test(v.lang));
-  voices = en.length ? en : all.filter((v) => /^en/i.test(v.lang));
+  voices = speechSynthesis.getVoices()
+    .filter((v) => /^en/i.test(v.lang) && !NOVELTY.test(v.name))
+    .sort((a, b) => voiceScore(b) - voiceScore(a));
+  assignVoices();
 }
-if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
-function voiceFor(c) {
-  if (c === judge) return { v: 0, pitch: 0.7, rate: 0.95 };
-  if (c === counsel.for) return { v: 1, pitch: 1.0, rate: 1.05 };
-  if (c === counsel.against) return { v: 2, pitch: 1.25, rate: 1.05 };
-  const w = witnesses.indexOf(c);
-  if (w >= 0) return { v: 3 + w, pitch: 0.85 + w * 0.15, rate: 1 };
-  const j = jurors.indexOf(c);
-  return { v: j + 1, pitch: 0.8 + (j % 5) * 0.12, rate: 1 + (j % 3) * 0.05 };
+// Hand out voices by importance: judge and lawyers get the best ones, then witnesses, then jurors.
+function assignVoices() {
+  const cast = [[judge, "m"], [counsel.for, "f"], [counsel.against, "m"]];
+  witnesses.forEach((c) => c && cast.push([c, c.gender || "?"]));
+  jurors.forEach((c, i) => cast.push([c, JUROR_G[i]]));
+  const used = new Map();
+  cast.forEach(([c, g], k) => {
+    const fits = voices.filter((v) => g === "?" || voiceGender(v) === g || voiceGender(v) === "?");
+    const pool = fits.length ? fits : voices;
+    if (!pool.length) { c.voice = null; return; }
+    const fresh = pool.find((v) => !used.has(v.name));
+    const v = fresh || pool[k % pool.length];
+    const n = used.get(v.name) || 0;
+    used.set(v.name, n + 1);
+    // a reused voice gets a small, natural-sounding shift so two characters don't sound identical
+    c.voice = { v, pitch: [1, 0.94, 1.06, 0.9, 1.1][n % 5], rate: c === judge ? 0.94 : 1 };
+  });
+}
+if (window.speechSynthesis) { setTimeout(loadVoices, 0); speechSynthesis.onvoiceschanged = loadVoices; }
+function speakable(text) {
+  return text
+    .replace(/\bv\.\s/g, "versus ")
+    .replace(/\b(Mr|Mrs|Ms|Dr|St|Jr|Sr)\./g, "$1")
+    .replace(/[—–]|--/g, ", ")
+    .replace(/[*_#"“”]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 function speak(c, text) {
   if (!soundOn || !window.speechSynthesis || !text) return;
   speechSynthesis.cancel();
-  const p = voiceFor(c);
-  // one utterance per sentence; long single utterances get cut off in some browsers
-  (text.match(/[^.!?]+[.!?]*/g) || [text]).forEach((s) => {
+  if (!c.voice) assignVoices();
+  const p = c.voice || { v: null, pitch: 1, rate: 1 };
+  // chunks of whole sentences up to ~220 characters: smooth delivery, and short enough
+  // that browsers which cut off long utterances don't
+  const chunks = [];
+  (speakable(text).match(/[^.!?]+[.!?]*\s*/g) || [text]).forEach((s) => {
+    const last = chunks[chunks.length - 1];
+    if (last && last.length + s.length < 220) chunks[chunks.length - 1] += s; else chunks.push(s);
+  });
+  chunks.forEach((s) => {
     if (!s.trim()) return;
     const u = new SpeechSynthesisUtterance(s.trim());
-    if (voices.length) u.voice = voices[p.v % voices.length];
-    u.pitch = p.pitch; u.rate = p.rate; u.lang = "en-US";
+    if (p.v) { u.voice = p.v; u.lang = p.v.lang; } else u.lang = "en-US";
+    u.pitch = p.pitch; u.rate = p.rate;
     speechSynthesis.speak(u);
   });
 }
@@ -696,12 +747,12 @@ Reply with only JSON:
 "title":"case caption like 'The People v. Dana Ruiz' or 'Okafor v. Brightline Rentals', or for an idea a short name for it; max 60 characters",
 "summary":"one or two sentences the judge reads aloud to open the case",
 "question":"the exact question the jury decides, one sentence",
-"witnesses":{"for":[{"name":"","role":"short role like 'responding officer'","knows":"1-2 sentences of what they saw or know"}],"against":[same shape]} (legal only, 1 or 2 per side)}`;
+"witnesses":{"for":[{"name":"","role":"short role like 'responding officer'","knows":"1-2 sentences of what they saw or know","voice":"female" or "male" or "either" (only pick female or male if the case file makes it clear, e.g. pronouns; it only picks a speaking voice)}],"against":[same shape]} (legal only, 1 or 2 per side)}`;
 }
 function cleanSetup(s) {
   if (!s || (s.kind !== "legal" && s.kind !== "idea")) throw { code: "invalid_json" };
   const legal = s.kind === "legal", type = s.legal_type === "civil" ? "civil" : "criminal";
-  const W = (a) => (Array.isArray(a) ? a : []).slice(0, 2).map((w) => ({ name: String((w && w.name) || "").slice(0, 40), role: String((w && w.role) || "witness").slice(0, 60), knows: String((w && w.knows) || "") })).filter((w) => w.name);
+  const W = (a) => (Array.isArray(a) ? a : []).slice(0, 2).map((w) => ({ name: String((w && w.name) || "").slice(0, 40), role: String((w && w.role) || "witness").slice(0, 60), knows: String((w && w.knows) || ""), gender: w && w.voice === "female" ? "f" : w && w.voice === "male" ? "m" : "?" })).filter((w) => w.name);
   const S = {
     legal, type, title: String(s.title || "The case").slice(0, 80), summary: String(s.summary || ""), question: String(s.question || ""),
     forLabel: legal ? (type === "civil" ? "Plaintiff" : "Prosecution") : "For", againstLabel: legal ? "Defense" : "Against",
@@ -951,12 +1002,14 @@ function spawnWitnesses(S) {
     const c = critter(0.95);
     dressWitness(c, w, w.idx);
     c.seat = seatOf(side, w.slot);
+    c.gender = w.gender;
     c.root.position.copy(c.seat);
     c.root.rotation.y = Math.PI;
     c.face = JUDGE_SPOT;
     scene.add(c.root);
     witnesses[w.idx] = c;
   }));
+  assignVoices();
 }
 function clearWitnesses() { witnesses.forEach((c) => c && scene.remove(c.root)); witnesses = []; }
 async function walkPath(c, pts) {
@@ -1040,14 +1093,16 @@ async function say(c, who, color, line, P, mode = "talk") {
     for (;;) {
       while (!view.done) {
         if (P && P.fatal) throw P.fatal;
+        ffCheck();
         await wait(120);
       }
       speak(c, view.text);
       await waitAdvance();
       hush();
+      ffCheck();
       if (line.done && idx >= paginate(line.text).length - 1) break;
       idx++;
-      bubble.shown = 0; bubble.lastLen = -1;
+      bubble.shown = 0; bubble.lastLen = -1; bubble.openedAt = now;
     }
   } finally {
     hush();
@@ -1056,7 +1111,7 @@ async function say(c, who, color, line, P, mode = "talk") {
   }
 }
 async function until(P, test) {
-  while (!test()) { if (P.fatal) throw P.fatal; await wait(150); }
+  while (!test()) { if (P.fatal) throw P.fatal; ffCheck(); await wait(150); }
 }
 
 async function playSpeech(P, b, chk) {
@@ -1110,16 +1165,46 @@ async function playExam(P, b, chk) {
   }
 }
 
+/* Fast-forward: shows up after several quick skips, jumps to the jury vote */
+const PRE = new Set(["intro", "research", "args"]);
+const ffBtn = document.getElementById("ff");
+let ffOn = false, ffResolve = null, ffP = null, quickTaps = [];
+function ffCheck() { if (ffOn && PRE.has(phase)) throw { code: "ff" }; }
+function noteQuick() {
+  if (!PRE.has(phase) || ffOn || !ffBtn.hidden) return;
+  quickTaps = quickTaps.filter((t) => now - t < 12);
+  quickTaps.push(now);
+  if (quickTaps.length >= 4) { ffBtn.hidden = false; sfx.blip(); }
+}
+function ffReset() { ffOn = false; quickTaps = []; ffBtn.hidden = true; ffP = new Promise((r) => { ffResolve = r; }); }
+ffBtn.addEventListener("click", () => {
+  if (!PRE.has(phase)) return;
+  ffOn = true; ffBtn.hidden = true; hush(); sfx.whoosh(1.5);
+  if (ffResolve) ffResolve();
+  if (advanceCb) { const cb = advanceCb; advanceCb = null; cb(); }
+});
+async function fastForward(P, chk) {
+  phase = "ff";
+  hush(); closeBubble(); advanceCb = null; researching = false; ffBtn.hidden = true;
+  [counsel.for, counsel.against].forEach((c, i) => { c.walk = null; c.root.position.copy(i ? SPOT.against : SPOT.for); c.face = JUDGE_SPOT; setMode(c, "idle"); });
+  witnesses.forEach((w) => { if (!w) return; w.walk = null; w.root.position.copy(w.seat); w.face = JUDGE_SPOT; setMode(w, "idle"); });
+  camTo("jury", 1.2);
+  await P.setupP.catch(() => {});
+  if (P.fatal) throw P.fatal;
+  chk();
+}
+
 function showHome() {
   phase = "home";
-  dock.hidden = false; quitBtn.hidden = true;
+  dock.hidden = false; quitBtn.hidden = true; ffBtn.hidden = true;
   camTo("orbit");
   syncBox();
 }
 
 async function trial(file) {
   const my = ++trialId;
-  const chk = () => { if (my !== trialId) throw { code: "cancelled" }; };
+  const chk = () => { if (my !== trialId) throw { code: "cancelled" }; ffCheck(); };
+  ffReset();
   ctl = new AbortController();
   dock.hidden = true; quitBtn.hidden = false; ideaBox.blur();
   initAudio();
@@ -1135,6 +1220,7 @@ async function trial(file) {
     }
     P = startPipeline(file, ctl.signal);
     currentP = P;
+    try {
     await wait(1300); chk();
     await bangGavel(3); chk();
     P.setupP.then(() => { if (my === trialId) { spawnWitnesses(P.setup); makeSignTex(P.setup.votes); } }).catch(() => {});
@@ -1144,7 +1230,7 @@ async function trial(file) {
     camTo("tables", 1.6);
     researching = true;
     setMode(counsel.for, "research"); setMode(counsel.against, "research");
-    await P.researchP.catch(() => {}); chk();
+    await Promise.race([P.researchP.catch(() => {}), ffP]); chk();
     if (P.fatal) throw P.fatal;
     researching = false;
     setMode(counsel.for, "idle"); setMode(counsel.against, "idle");
@@ -1154,6 +1240,10 @@ async function trial(file) {
     for (const b of P.beats) {
       if (b.kind === "speech") await playSpeech(P, b, chk);
       else await playExam(P, b, chk);
+    }
+    } catch (e) {
+      if (!e || e.code !== "ff") throw e;
+      await fastForward(P, chk);
     }
 
     phase = "jury";
@@ -1198,6 +1288,7 @@ async function trial(file) {
   } catch (e) {
     if (my !== trialId || (e && e.code === "cancelled")) return;
     researching = false;
+    ffOn = false; ffBtn.hidden = true;
     camTo("judge", 1);
     await say(judge, "The Judge", COLOR.judge, mkLine(errCopy(e))).catch(() => {});
   } finally {
