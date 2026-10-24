@@ -64,6 +64,17 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 #ff:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
 @keyframes ffIn { from { transform: scale(.4); opacity: 0; } }
 @keyframes ffPulse { 50% { transform: scale(1.07); } }
+#raise { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 24px; z-index: 6; height: 52px; padding: 0 16px 0 12px; border-radius: 26px; border: 3px solid var(--ink); background: var(--paper); cursor: pointer; display: flex; align-items: center; gap: 8px; font: 600 15px var(--ui); color: var(--ink); box-shadow: 0 5px 0 rgba(0, 0, 0, .35); }
+#raise:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
+#raise.sent { background: var(--judge); }
+#raise .badge { min-width: 22px; height: 22px; border-radius: 11px; background: var(--ink); color: var(--paper); font-size: 12.5px; display: grid; place-items: center; padding: 0 6px; }
+#noteCard { position: absolute; left: 50%; top: 50%; z-index: 8; width: min(520px, calc(100vw - 32px)); transform: translate(-50%, -50%); background: var(--paper); border: 3px solid var(--ink); border-radius: 20px; padding: 26px 16px 14px; box-shadow: 0 8px 0 rgba(0, 0, 0, .35); display: grid; gap: 10px; }
+#noteCard .who { background: var(--judge); }
+#note { width: 100%; min-height: 96px; max-height: 40vh; resize: vertical; border: 2px solid #d8c9b4; border-radius: 12px; background: #fff; color: var(--ink); font: 500 16px/1.4 var(--ui); padding: 10px 12px; outline: none; }
+#note:focus { border-color: var(--judge); }
+.note-row { display: flex; justify-content: flex-end; gap: 8px; }
+.note-row button { height: 44px; min-width: 44px; padding: 0 14px; border-radius: 14px; border: 3px solid var(--ink); background: var(--paper); cursor: pointer; display: grid; place-items: center; }
+.note-row .send { background: var(--judge); }
 #mute { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); z-index: 6; width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); cursor: pointer; display: grid; place-items: center; }
 #mute .x { display: none; } #mute.off .x { display: inline; } #mute.off .w { display: none; }
 #mute:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
@@ -79,6 +90,18 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 <button id="ff" type="button" aria-label="Skip to the jury vote" hidden>
   <svg width="34" height="24" viewBox="0 0 34 24" aria-hidden="true"><path d="M2 3l13 9-13 9zM16 3l13 9-13 9z" fill="#2a1c12"/><rect x="29" y="3" width="3.5" height="18" rx="1" fill="#2a1c12"/></svg>
 </button>
+<button id="raise" type="button" aria-label="Raise a new point" hidden>
+  <svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><path d="M11 2a7.5 7.5 0 0 0-4.6 13.4c.8.7 1.3 1.6 1.3 2.6V19h6.6v-1c0-1 .5-1.9 1.3-2.6A7.5 7.5 0 0 0 11 2z" fill="#f2c230" stroke="#2a1c12" stroke-width="2"/><rect x="7.5" y="20.5" width="7" height="2.2" rx="1" fill="#2a1c12"/><rect x="8.5" y="23.5" width="5" height="2" rx="1" fill="#2a1c12"/></svg>
+  <span class="badge" id="raiseCount" hidden></span>
+</button>
+<form id="noteCard" hidden>
+  <span class="who">Note to the court</span>
+  <textarea id="note" maxlength="1500" placeholder="A new point, fact, or idea to throw into the trial…" aria-label="Your note to the court"></textarea>
+  <div class="note-row">
+    <button type="button" id="noteCancel" aria-label="Cancel"><svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3l12 12M15 3L3 15" stroke="#2a1c12" stroke-width="3" stroke-linecap="round"/></svg></button>
+    <button type="submit" class="send" aria-label="Pass the note to the judge"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5L21 3l-6.5 18-3-7.5z" fill="#2a1c12"/></svg></button>
+  </div>
+</form>
 <div id="tip" hidden><span class="who" id="tipWho"></span><div id="tipTxt"></div></div>
 <button id="mute" type="button" aria-label="Turn sound off">
   <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="#2a1c12"/><path class="w" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="#2a1c12" stroke-width="2.2" fill="none" stroke-linecap="round"/><path class="x" d="M16 9l6 6M22 9l-6 6" stroke="#2a1c12" stroke-width="2.4" stroke-linecap="round"/></svg>
@@ -517,7 +540,7 @@ function onTap(e) {
 host.addEventListener("pointerdown", onTap);
 bubbleEl.addEventListener("pointerdown", onTap);
 addEventListener("keydown", (e) => {
-  if (document.activeElement && document.activeElement.id === "idea") return;
+  if (document.activeElement && (document.activeElement.id === "idea" || document.activeElement.id === "note")) return;
   if (e.key === " " || e.key === "Enter") { e.preventDefault(); onTap(); }
 });
 
@@ -714,6 +737,7 @@ function frame() {
     if (researching && now - lastPaper > 0.45) { lastPaper = now; sfx.paper(); }
   }
   tapHint.hidden = !(advanceCb && !bubble.open);
+  raiseBtn.hidden = !(phase === "args" && noteCard.hidden);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
@@ -830,7 +854,8 @@ function recordText(P, upTo) {
   const parts = [];
   for (let i = 0; i < upTo; i++) {
     const b = P.beats[i];
-    if (b.kind === "speech") parts.push(`${label(P, b.side)}, ${b.title}:\n${b.line.text}`);
+    if (b.kind === "note") parts.push(`The judge read a note passed from the gallery: "${b.note}"`);
+    else if (b.kind === "speech") { if (b.side && b.line.text) parts.push(`${label(P, b.side)}, ${b.title}:\n${b.line.text}`); }
     else if (b.turns) parts.push(`${b.title}:\n` + b.turns.map((t) => `${whoName(P, b, t.who)}: ${t.text}`).join("\n"));
   }
   return parts.length ? parts.join("\n\n") : "(nothing yet, you speak first)";
@@ -941,9 +966,10 @@ async function pool(items, limit, fn) {
 }
 
 function startPipeline(file, signal) {
-  const P = { file, setup: null, research: {}, beats: [], votes: Array(12).fill(null), voted: Array(12).fill(false), opening: mkLine(), verdict: mkLine(), fatal: null };
+  const P = { file, setup: null, research: {}, beats: [], votes: Array(12).fill(null), voted: Array(12).fill(false), opening: mkLine(), verdict: mkLine(), fatal: null, voteRound: 0, cur: -1, signal };
   const fail = (e) => { if (!P.fatal) P.fatal = e || { code: "upstream_error" }; throw P.fatal; };
-  const runLine = (line, prompt) => sample(prompt, { signal, cache: false, onText: ({ text }) => { line.text = text; } }).then((r) => { line.text = r.text.trim(); line.done = true; });
+  const runLine = (line, prompt, sig = signal) => sample(prompt, { signal: sig, cache: false, onText: ({ text }) => { line.text = text; } }).then((r) => { line.text = r.text.trim(); line.done = true; });
+  P.fail = fail; P.runLine = runLine;
   P.setupP = sample.json(setupPrompt(file), { signal, cache: false }).then((s) => {
     P.setup = cleanSetup(s); P.beats = buildBeats(P.setup);
     P.opening.text = openingText(P.setup); P.opening.done = true;
@@ -951,31 +977,98 @@ function startPipeline(file, signal) {
   P.researchP = P.setupP.then(() => Promise.all(["for", "against"].map((side) =>
     sample.json(researchPrompt(P, side), { signal, cache: false }).then((r) => { P.research[side] = cleanResearch(r); })
   ))).catch(fail);
+  // Writes the planned beats in order. Notes from the gallery (own beats) are written separately,
+  // so this always picks the next unwritten planned beat and waits for any notes placed before it.
   P.beatsP = P.researchP.then(async () => {
-    for (let i = 0; i < P.beats.length; i++) {
-      const b = P.beats[i];
+    for (;;) {
+      const b = P.beats.find((x) => !x.own && !x.started);
+      if (!b) break;
+      b.started = true;
+      await Promise.all(P.beats.slice(0, P.beats.indexOf(b)).filter((x) => x.own).map((x) => x.promise));
+      const i = P.beats.indexOf(b);
       if (b.kind === "speech") await runLine(b.line, speechPrompt(P, b, i));
       else b.turns = cleanTurns(await sample.json(examPrompt(P, b, i), { signal, cache: false }));
     }
   }).catch(fail);
-  P.votesP = P.beatsP.then(() => pool(JURORS, 3, async (j, i) => {
+  P.votesP = P.beatsP.then(() => runVotes(P));
+  P.votesP.catch(() => {});
+  [P.researchP, P.beatsP].forEach((p) => p.catch(() => {}));
+  return P;
+}
+
+// Secret ballots plus the judge's verdict. Runs again from scratch if a gallery note lands after voting began.
+function runVotes(P) {
+  const round = ++P.voteRound;
+  if (P.roundCtl) P.roundCtl.abort();
+  const rc = P.roundCtl = new AbortController();
+  P.signal.addEventListener("abort", () => rc.abort(), { once: true });
+  P.votes = Array(12).fill(null); P.voted = Array(12).fill(false);
+  P.ruling = null; P.verdict = mkLine();
+  const stale = () => round !== P.voteRound;
+  const run = Promise.all(P.beats.filter((b) => b.own).map((b) => b.promise)).then(() => pool(JURORS, 3, async (j, i) => {
+    if (stale()) return;
     try {
-      const v = await sample.json(jurorPrompt(P, j, i), { signal, cache: false });
+      const v = await sample.json(jurorPrompt(P, j, i), { signal: rc.signal, cache: false });
+      if (stale()) return;
       const raw = String((v && v.vote) || "").toUpperCase().trim();
       const side = raw === P.setup.votes.for ? "for" : raw === P.setup.votes.against ? "against" : null;
       if (side) P.votes[i] = { side, reason: String(v.reason || "") };
     } catch (e) {
-      if (e && FATAL.has(e.code)) fail(e);
+      if (stale()) return;
+      if (e && FATAL.has(e.code)) P.fail(e);
     }
     P.voted[i] = true;
     if (phase === "jury") { setMode(jurors[i], P.votes[i] ? "sealed" : "idle"); if (P.votes[i]) sfx.seal(); }
   })).then(() => {
-    if (!P.votes.some(Boolean)) fail({ code: "upstream_error" });
+    if (stale()) return;
+    if (!P.votes.some(Boolean)) P.fail({ code: "upstream_error" });
     P.ruling = computeRuling(P);
+    const line = P.verdict;
+    P.runLine(line, judgePrompt(P), rc.signal).catch((e) => { if (!stale()) { line.error = e; P.fail(e); } }).catch(() => {});
   });
-  P.verdictP = P.votesP.then(() => runLine(P.verdict, judgePrompt(P)).catch(fail));
-  [P.researchP, P.beatsP, P.votesP, P.verdictP].forEach((p) => p.catch(() => {}));
-  return P;
+  P.votesP = run;
+  run.catch(() => {});
+  return run;
+}
+
+/* Gallery notes: the user raises a point mid-trial; one side argues it, the other rebuts */
+function raisePrompt(P, note, idx) {
+  const S = P.setup;
+  return `${header(P)}
+
+Case file:
+"""${P.file}"""
+
+Trial record so far:
+${recordText(P, idx)}
+
+Someone in the gallery just passed the court this note, and the judge read it aloud:
+"""${note}"""
+
+First decide which side this note helps more: "for" (the ${S.forLabel}) or "against" (the ${S.againstLabel}). Then write what that side's attorney says to the jury about it: 60 to 110 words, plain spoken, like a trial lawyer seizing on a new point and tying it to their case. ${S.legal ? "Treat it as a point to argue, not sworn evidence, and don't invent facts beyond the note and the record." : "Don't invent statistics or sources."} No headings or stage directions.
+
+Reply with only JSON: {"helps":"for" or "against","speech":"what the attorney says"}`;
+}
+function raiseNote(note) {
+  const P = currentP;
+  if (!P || phase !== "args" || P.fatal) return false;
+  const idx = Math.max(0, P.cur + 1);
+  const N = { kind: "note", note, own: true, promise: Promise.resolve() };
+  const X = { kind: "speech", side: null, title: "Responding to a note from the gallery", words: "60 to 110", line: mkLine(), own: true };
+  const Y = { kind: "speech", side: null, title: "Rebuttal to the gallery note", words: "60 to 110", line: mkLine(), own: true };
+  P.beats.splice(idx, 0, N, X, Y);
+  X.promise = sample.json(raisePrompt(P, note, idx), { signal: P.signal, cache: false }).then((r) => {
+    const speech = String((r && r.speech) || "").trim();
+    if (!speech) throw { code: "invalid_json" };
+    X.side = r.helps === "against" ? "against" : "for";
+    Y.side = other(X.side);
+    Y.ask = `a short rebuttal. The ${label(P, X.side)} just argued a point raised in a note from the gallery. Answer it directly and bring the jury back to your case.`;
+    X.line.text = speech; X.line.done = true;
+  }).catch(P.fail);
+  Y.promise = X.promise.then(() => P.runLine(Y.line, speechPrompt(P, Y, P.beats.indexOf(Y)))).catch(P.fail);
+  [X.promise, Y.promise].forEach((p) => p.catch(() => {}));
+  if (P.voteRound > 0) runVotes(P);
+  return true;
 }
 
 /* ---------- Witnesses ---------- */
@@ -1114,7 +1207,22 @@ async function until(P, test) {
   while (!test()) { if (P.fatal) throw P.fatal; ffCheck(); await wait(150); }
 }
 
+async function playNote(P, b, chk) {
+  notesQueued = Math.max(0, notesQueued - 1);
+  raiseCount.textContent = notesQueued; raiseCount.hidden = !notesQueued;
+  camTo("judge", 1.1);
+  await wait(900); chk();
+  await bangGavel(1); chk();
+  sfx.murmur();
+  await say(judge, "The Judge", COLOR.judge, mkLine(`The court has received a note from the gallery. It reads: "${b.note}" Counsel, you may respond.`), P); chk();
+}
 async function playSpeech(P, b, chk) {
+  if (!b.side) {
+    camTo("tables", 1.0);
+    setMode(counsel.for, "think"); setMode(counsel.against, "think");
+    await until(P, () => b.side); chk();
+    setMode(counsel.for, "idle"); setMode(counsel.against, "idle");
+  }
   const c = counsel[b.side];
   camTo("tables", 1.0);
   await walkTo(c, PODIUM, 1.7); chk();
@@ -1194,9 +1302,32 @@ async function fastForward(P, chk) {
   chk();
 }
 
+const raiseBtn = document.getElementById("raise"), noteCard = document.getElementById("noteCard"), noteBox = document.getElementById("note"), raiseCount = document.getElementById("raiseCount");
+let notesQueued = 0;
+function closeNote() { noteCard.hidden = true; noteBox.blur(); }
+raiseBtn.addEventListener("click", () => { noteCard.hidden = false; noteBox.value = ""; noteBox.focus(); sfx.blip(); });
+document.getElementById("noteCancel").addEventListener("click", closeNote);
+noteBox.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeNote();
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); noteCard.requestSubmit(); }
+});
+noteCard.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const note = noteBox.value.trim();
+  if (note.length < 3) { noteBox.focus(); return; }
+  closeNote();
+  if (raiseNote(note)) {
+    sfx.seal();
+    notesQueued++;
+    raiseCount.textContent = notesQueued; raiseCount.hidden = false;
+    raiseBtn.classList.add("sent"); setTimeout(() => raiseBtn.classList.remove("sent"), 900);
+  }
+});
+
 function showHome() {
   phase = "home";
   dock.hidden = false; quitBtn.hidden = true; ffBtn.hidden = true;
+  closeNote(); notesQueued = 0; raiseCount.hidden = true;
   camTo("orbit");
   syncBox();
 }
@@ -1237,8 +1368,11 @@ async function trial(file) {
     await wait(500); chk();
 
     phase = "args";
-    for (const b of P.beats) {
-      if (b.kind === "speech") await playSpeech(P, b, chk);
+    for (let i = 0; i < P.beats.length; i++) {
+      P.cur = i;
+      const b = P.beats[i];
+      if (b.kind === "note") await playNote(P, b, chk);
+      else if (b.kind === "speech") await playSpeech(P, b, chk);
       else await playExam(P, b, chk);
     }
     } catch (e) {
@@ -1257,7 +1391,8 @@ async function trial(file) {
     jurors.forEach((j) => { j.face = JURY_LOOK; });
     camTo("jury", 1.6);
     jurors.forEach((j, i) => setMode(j, P.voted[i] ? (P.votes[i] ? "sealed" : "idle") : "think"));
-    await P.votesP.catch(() => {}); chk();
+    await P.beatsP.catch(() => {}); chk();
+    for (let vp = null; vp !== P.votesP;) { vp = P.votesP; await vp.catch(() => {}); chk(); }
     if (P.fatal) throw P.fatal;
     await wait(900); chk();
     for (let i = 0; i < 12; i++) {
