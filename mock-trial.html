@@ -1,710 +1,782 @@
 <title>Court of Ideas</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,500;0,6..96,700;1,6..96,500&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: one court record, read top to bottom like a docket. Caption, filing, then four numbered proceedings. */
+/* Layout: one full-screen 3D courtroom. The only UI is the prompt dock, speech bubbles, and an adjourn button. Single dark look by choice. */
 :root {
-  --bg: #eceff3;
-  --paper: #fbfcfd;
-  --ink: #1a2332;
-  --muted: #5a6577;
-  --rule: #cbd2dc;
-  --for: #1d6b58;
-  --for-soft: #dcefe8;
-  --against: #8d2a3b;
-  --against-soft: #f5e1e4;
-  --seal: #8f6b12;
-  --seal-soft: #f3ead2;
-  --clawd: #d97757;
-  --display: "Bodoni Moda", "Didot", "Bodoni 72", Georgia, serif;
-  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --night: #1a130e;
+  --paper: #fffaf1;
+  --ink: #2a1c12;
+  --for: #2f9e7e;
+  --against: #d1495b;
+  --judge: #c8952e;
+  --ui: "Fredoka", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f141b; --paper: #171e28; --ink: #e5e9ef; --muted: #96a1b2; --rule: #2a3442;
-    --for: #63c2a6; --for-soft: #16302a; --against: #e57f8f; --against-soft: #3a1c23;
-    --seal: #d6b05a; --seal-soft: #33291a; color-scheme: dark;
-  }
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--night); color: var(--ink); font-family: var(--ui); overflow: hidden; position: relative; -webkit-tap-highlight-color: transparent; }
+#game { position: absolute; inset: 0; }
+#game canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; }
+
+.bubble {
+  position: absolute; left: 0; top: 0; z-index: 5; width: max-content; max-width: min(440px, calc(100vw - 32px));
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 20px; padding: 18px 20px 20px;
+  box-shadow: 0 6px 0 rgba(0, 0, 0, .3); font-size: 17px; line-height: 1.42; pointer-events: none;
 }
-:root[data-theme="dark"] {
-  --bg: #0f141b; --paper: #171e28; --ink: #e5e9ef; --muted: #96a1b2; --rule: #2a3442;
-  --for: #63c2a6; --for-soft: #16302a; --against: #e57f8f; --against-soft: #3a1c23;
-  --seal: #d6b05a; --seal-soft: #33291a; color-scheme: dark;
+.bubble[hidden] { display: none !important; }
+.bubble.pop { animation: pop .28s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.who {
+  position: absolute; top: -15px; left: 16px; background: var(--who, var(--judge)); color: #fff; border: 2.5px solid var(--ink);
+  border-radius: 999px; padding: 1px 12px; font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
 }
-* { box-sizing: border-box; }
-body {
-  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 28px 64px;
-}
-.record { max-width: 880px; margin: 0 auto; display: grid; gap: 28px; }
-h1, h2, h3 { text-wrap: balance; margin: 0; }
-.label { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.txt { max-height: 38vh; overflow-y: auto; white-space: pre-wrap; min-width: 60px; }
+.txt.wait { display: flex; gap: 6px; padding: 6px 4px; }
+.txt.wait i { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); opacity: .3; animation: think 1s infinite; }
+.txt.wait i:nth-child(2) { animation-delay: .15s; } .txt.wait i:nth-child(3) { animation-delay: .3s; }
+@keyframes think { 50% { opacity: 1; transform: translateY(-4px); } }
+.next { position: absolute; right: 12px; bottom: 6px; width: 0; height: 0; border-left: 10px solid var(--ink); border-top: 7px solid transparent; border-bottom: 7px solid transparent; animation: nudge .7s ease-in-out infinite; }
+@keyframes nudge { 50% { transform: translateX(4px); } }
+.tail { position: absolute; bottom: -13px; width: 22px; height: 22px; margin-left: -11px; background: var(--paper); border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: rotate(45deg); }
 
-/* Caption */
-.caption { text-align: center; display: grid; gap: 10px; padding-block: 8px 4px; }
-.caption h1 { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 6vw, 46px); line-height: 1.05; letter-spacing: -.01em; }
-.caption .court { font-family: var(--mono); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--seal); }
-.caption .sub { color: var(--muted); max-width: 56ch; margin: 0 auto; }
+#tapHint { position: absolute; left: 50%; bottom: 28px; z-index: 5; width: 54px; height: 54px; margin-left: -27px; border-radius: 50%; background: var(--paper); border: 3px solid var(--ink); display: grid; place-items: center; animation: bounce 1s ease-in-out infinite; pointer-events: none; }
+#tapHint::after { content: ""; border-left: 16px solid var(--ink); border-top: 11px solid transparent; border-bottom: 11px solid transparent; margin-left: 5px; }
+@keyframes bounce { 50% { transform: translateY(-6px); } }
 
-/* Filing */
-.filing { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 22px; display: grid; gap: 14px; }
-.filing label { font-weight: 600; }
-textarea {
-  width: 100%; min-height: 92px; resize: vertical; font: inherit; font-size: 16px; color: var(--ink);
-  background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 12px 14px;
-}
-textarea:focus-visible, button:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
-.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
-.btns { display: flex; gap: 10px; flex-wrap: wrap; }
-button { font: inherit; font-weight: 600; cursor: pointer; border-radius: 4px; padding: 10px 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); }
-button.ghost { background: transparent; color: var(--ink); border-color: var(--rule); }
-button:disabled { opacity: .45; cursor: not-allowed; }
-.hint { font-size: 13px; color: var(--muted); }
-.notice { font-size: 14px; padding: 10px 14px; border-radius: 4px; background: var(--seal-soft); color: var(--ink); }
+#dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; justify-content: center; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 20px; }
+.dock-in { display: flex; gap: 8px; width: min(640px, 100%); background: var(--paper); border: 3px solid var(--ink); border-radius: 22px; padding: 6px; box-shadow: 0 6px 0 rgba(0, 0, 0, .35); }
+#idea { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: 500 17px var(--ui); padding: 10px 12px; outline: none; }
+#idea::placeholder { color: #8a7766; }
+.gavel-btn { flex: none; width: 52px; height: 48px; border-radius: 16px; border: 3px solid var(--ink); background: var(--judge); cursor: pointer; display: grid; place-items: center; }
+.gavel-btn:active { transform: translateY(2px); }
+.gavel-btn:focus-visible, #quit:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
+#quit { position: absolute; top: 14px; right: max(16px, env(safe-area-inset-right, 0px)); z-index: 6; width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); cursor: pointer; display: grid; place-items: center; }
 
-/* Progress rail */
-.rail { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-.step { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 8px; border-top: 3px solid var(--rule); }
-.step.active { color: var(--ink); border-top-color: var(--seal); }
-.step.done { color: var(--ink); border-top-color: var(--ink); }
-
-/* Proceedings */
-.proc { display: grid; gap: 14px; }
-.proc-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--rule); padding-bottom: 8px; }
-.proc-head .num { font-family: var(--display); font-style: italic; font-size: 22px; color: var(--seal); min-width: 1.6em; }
-.proc-head h2 { font-family: var(--display); font-weight: 500; font-size: 24px; }
-.proc-head .status { margin-left: auto; }
-.empty { color: var(--muted); font-size: 14px; }
-
-.sides { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.brief { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
-.side-tag { font-family: var(--mono); font-size: 11.5px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
-.for .side-tag { color: var(--for); }
-.against .side-tag { color: var(--against); }
-.theory { font-family: var(--display); font-size: 18px; line-height: 1.3; }
-.exhibits { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.exhibit { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 14px; }
-.exhibit .tag { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 3px; height: fit-content; white-space: nowrap; }
-.for .exhibit .tag { background: var(--for-soft); color: var(--for); }
-.against .exhibit .tag { background: var(--against-soft); color: var(--against); }
-.exhibit b { font-weight: 600; }
-.conf { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.conf.shaky { color: var(--against); }
-.attack { font-size: 13.5px; color: var(--muted); border-top: 1px dashed var(--rule); padding-top: 10px; }
-
-/* Transcript */
-.transcript { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 18px; }
-.speech { display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding-block: 16px; border-bottom: 1px solid var(--rule); }
-.speech:last-child { border-bottom: 0; }
-.speaker { display: grid; gap: 2px; align-content: start; }
-.speaker .who { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
-.speech.for .who { color: var(--for); }
-.speech.against .who { color: var(--against); }
-.speech .words { white-space: pre-wrap; min-width: 0; max-width: 66ch; }
-.speech .words.waiting { color: var(--muted); font-style: italic; }
-
-/* Jury box */
-.tally { display: grid; gap: 8px; }
-.bar { display: flex; height: 12px; border-radius: 2px; overflow: hidden; background: var(--rule); }
-.bar .y { background: var(--for); transition: width .4s; }
-.bar .n { background: var(--against); transition: width .4s; }
-.tally-nums { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
-.tally-nums .y { color: var(--for); } .tally-nums .n { color: var(--against); }
-.jury { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.seat { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; display: grid; gap: 6px; align-content: start; min-width: 0; }
-.seat .no { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.seat .name { font-weight: 700; }
-.seat .job { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
-.seat .temper { font-size: 12.5px; font-style: italic; line-height: 1.35; }
-.ballot { font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; padding: 5px 8px; border-radius: 3px; background: var(--bg); color: var(--muted); text-align: center; }
-.ballot.sealed { background: var(--seal-soft); color: var(--seal); }
-.ballot.yay { background: var(--for); color: var(--paper); font-weight: 500; }
-.ballot.nay { background: var(--against); color: var(--paper); font-weight: 500; }
-.seat .reason { font-size: 13px; line-height: 1.45; }
-.seat.yay { border-color: var(--for); }
-.seat.nay { border-color: var(--against); }
-
-/* Mini jurors */
-.stage { position: relative; height: 72px; display: flex; justify-content: center; align-items: flex-end; }
-.mini { width: 64px; height: 64px; overflow: visible; shape-rendering: crispEdges; }
-.mini .body { fill: var(--clawd); }
-.mini .hop, .mini .bob, .mini .eyes, .mini .arm-l, .mini .arm-r, .mini .leg-a, .mini .leg-b { transform-box: view-box; }
-.mini .bob { animation: bob 2.6s ease-in-out infinite; animation-delay: var(--d); transform-origin: 16px 26px; }
-.mini .eyes { transform-box: fill-box; transform-origin: center; animation: blink 4.2s infinite; animation-delay: var(--d); }
-.mini .look, .mini .arm-l, .mini .arm-r { transition: transform .35s ease; }
-.mini .env { opacity: 0; transition: opacity .3s; shape-rendering: geometricPrecision; }
-.seat.look-for .look { transform: translateX(-1.5px); }
-.seat.look-against .look { transform: translateX(1.5px); }
-.seat.look-up .look, .seat.think .look { transform: translateY(-1.5px); }
-@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
-@keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.15); } }
-
-.bubble { position: absolute; top: 0; left: calc(50% + 16px); display: none; gap: 3px; padding: 5px 7px; background: var(--bg); border: 1px solid var(--rule); border-radius: 10px; }
-.bubble span { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); animation: dot 1s ease-in-out infinite; }
-.bubble span:nth-child(2) { animation-delay: .15s; } .bubble span:nth-child(3) { animation-delay: .3s; }
-@keyframes dot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
-.seat.think .bubble { display: flex; }
-.seat.think .bob { animation: sway 1.6s ease-in-out infinite; animation-delay: var(--d); }
-.seat.think .arm-r { transform: translate(1px, -5px); }
-@keyframes sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
-
-.seat.sealed .env { opacity: 1; }
-.seat.sealed .arm-l { transform: translate(3px, 1px); }
-.seat.sealed .arm-r { transform: translate(-3px, 1px); }
-.seat.sealed .hop { animation: jump .45s ease-out 1; }
-
-.seat.yay .hop { animation: jump .6s ease-out 2; }
-.seat.yay .arm-l { transform: translate(-1px, -9px); }
-.seat.yay .arm-r { transform: translate(1px, -9px); }
-.seat.nay .hop { animation: shake .45s ease-in-out 2; }
-.seat.nay .eyes { animation: none; transform: scaleY(.45); }
-.seat.nay .arm-l, .seat.nay .arm-r { transform: translateY(2px); }
-@keyframes jump { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-7px); } }
-@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
-
-.zz { position: absolute; top: 4px; left: calc(50% + 14px); display: none; font-family: var(--mono); font-size: 12px; color: var(--muted); animation: zz 2s ease-in-out infinite; }
-.seat.excused .zz { display: block; }
-.seat.excused .mini { filter: grayscale(1); opacity: .5; }
-.seat.excused .eyes { animation: none; transform: scaleY(.15); }
-@keyframes zz { 0% { opacity: 0; transform: translate(0, 4px); } 50% { opacity: 1; } 100% { opacity: 0; transform: translate(6px, -8px); } }
-
-.seat.enter .hop { animation: walkin .8s ease-out both; animation-delay: calc(var(--i) * 60ms); }
-.seat.enter .leg-a { animation: step .2s steps(1) 4; animation-delay: calc(var(--i) * 60ms); }
-.seat.enter .leg-b { animation: step .2s steps(1) 4 reverse; animation-delay: calc(var(--i) * 60ms); }
-@keyframes walkin { from { transform: translateX(-16px); } to { transform: translateX(0); } }
-@keyframes step { 0% { transform: translateY(-1px); } 50% { transform: translateY(0); } }
-
-.ballot.yay, .ballot.nay { animation: pop .4s ease-out; }
-@keyframes pop { 0% { transform: scale(.4); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
-
-/* Verdict */
-.verdict { background: var(--paper); border: 1px solid var(--ink); border-radius: 6px; padding: 26px; display: grid; gap: 16px; }
-.ruling { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--seal); }
-.verdict h3 { font-family: var(--display); font-weight: 700; font-size: clamp(24px, 4.5vw, 32px); line-height: 1.15; }
-.opinion p { margin: 0 0 12px; max-width: 68ch; }
-.findings { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.finding { display: grid; gap: 4px; font-size: 14px; }
-.finding.f .label { color: var(--for); } .finding.a .label { color: var(--against); }
-.advice { border-top: 1px solid var(--rule); padding-top: 14px; font-size: 14.5px; }
-.signed { font-family: var(--display); font-style: italic; color: var(--muted); }
-
-@media (max-width: 720px) {
-  .jury { grid-template-columns: repeat(2, 1fr); }
-  .sides, .findings { grid-template-columns: 1fr; }
-  .speech { grid-template-columns: 1fr; gap: 6px; }
-  .rail .step { font-size: 9.5px; letter-spacing: .02em; }
-}
 @media (prefers-reduced-motion: reduce) {
-  .bar .y, .bar .n, .mini * { transition: none !important; }
-  .mini *, .bubble span, .zz, .ballot { animation: none !important; }
+  .bubble.pop, .next, #tapHint, .txt.wait i { animation: none; }
 }
 </style>
 
-<div class="record">
-  <header class="caption">
-    <div class="court">In the Court of Ideas · United States</div>
-    <h1 id="caseTitle">In re: Your Idea</h1>
-    <p class="sub">File an idea. Two lawyers research it, argue it, and a 12-person jury votes in secret. Then the judge rules.</p>
-  </header>
+<div id="game"></div>
+<div class="bubble" id="bubble" hidden><span class="who" id="who"></span><div class="txt" id="txt"></div><span class="next" id="next" hidden></span><span class="tail" id="tail"></span></div>
+<div id="tapHint" hidden></div>
+<form id="dock">
+  <div class="dock-in">
+    <input id="idea" maxlength="300" autocomplete="off" placeholder="What idea goes on trial?" aria-label="Idea to put on trial">
+    <button class="gavel-btn" type="submit" aria-label="Start the trial">
+      <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><g fill="#2a1c12"><rect x="5" y="3" width="9" height="6" rx="1.5" transform="rotate(-45 9.5 6)"/><rect x="11" y="9" width="3" height="12" rx="1.5" transform="rotate(-45 12.5 15)"/><rect x="3" y="19" width="11" height="2.5" rx="1.2"/></g></svg>
+    </button>
+  </div>
+</form>
+<button id="quit" type="button" aria-label="Adjourn the trial" hidden>
+  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 3l12 12M15 3L3 15" stroke="#2a1c12" stroke-width="3" stroke-linecap="round"/></svg>
+</button>
 
-  <form class="filing" id="filing">
-    <label for="idea">The idea on trial</label>
-    <textarea id="idea" maxlength="600" placeholder="Example: Public high schools should switch to a four-day school week.">Public high schools should switch to a four-day school week.</textarea>
-    <div class="row">
-      <span class="hint" id="charCount">0 / 600</span>
-      <div class="btns">
-        <button type="button" class="ghost" id="stopBtn" hidden>Adjourn</button>
-        <button type="submit" id="fileBtn">File the case</button>
-      </div>
-    </div>
-    <div class="notice" id="notice" hidden></div>
-  </form>
-
-  <nav class="rail" aria-label="Trial progress">
-    <div class="step" data-step="research">Research</div>
-    <div class="step" data-step="args">Arguments</div>
-    <div class="step" data-step="jury">Jury vote</div>
-    <div class="step" data-step="unseal">Ballots</div>
-    <div class="step" data-step="verdict">Verdict</div>
-  </nav>
-
-  <section class="proc">
-    <div class="proc-head"><span class="num">I.</span><h2>Research period</h2><span class="label status" id="stResearch">Not started</span></div>
-    <div class="sides">
-      <div class="brief for" id="briefFor"><div class="side-tag">Counsel for the idea</div><p class="empty">Builds the case for your idea and enters numbered exhibits.</p></div>
-      <div class="brief against" id="briefAgainst"><div class="side-tag">Counsel against the idea</div><p class="empty">Builds the case against it and enters lettered exhibits.</p></div>
-    </div>
-  </section>
-
-  <section class="proc">
-    <div class="proc-head"><span class="num">II.</span><h2>Arguments</h2><span class="label status" id="stArgs">Not started</span></div>
-    <div class="transcript" id="transcript">
-      <div class="speech"><div class="speaker"><span class="label">Order of speakers</span></div>
-        <div class="words waiting">For opens, Against opens, For closes, Against closes. Each side sees what the other said and answers it.</div></div>
-    </div>
-  </section>
-
-  <section class="proc">
-    <div class="proc-head"><span class="num">III.</span><h2>The jury</h2><span class="label status" id="stJury">Seated</span></div>
-    <div class="tally">
-      <div class="bar"><div class="y" id="barY" style="width:0"></div><div class="n" id="barN" style="width:0"></div></div>
-      <div class="tally-nums"><span class="y" id="numY">YAY —</span><span class="label" id="sealCount">0 of 12 ballots in</span><span class="n" id="numN">NAY —</span></div>
-    </div>
-    <div class="jury" id="jury"></div>
-  </section>
-
-  <section class="proc">
-    <div class="proc-head"><span class="num">IV.</span><h2>Verdict</h2><span class="label status" id="stVerdict">Pending</span></div>
-    <div id="verdictBox"><p class="empty">The judge reads the record and the jury's ballots, then rules.</p></div>
-  </section>
-</div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+/* ---------- Cast ---------- */
 const JURORS = [
-  { name: "Dolores", age: 71, job: "Retired high school chemistry teacher, Ohio", temper: "Wants evidence. Hates hand-waving.",
-    voice: "You taught chemistry for 38 years. You grade arguments like lab reports: claims need evidence, and you dock points for exaggeration. Dry, a little stern, fair." },
-  { name: "Marcus", age: 34, job: "Union electrician, Philadelphia", temper: "Who pays, who does the work?",
-    voice: "You're practical and blunt. You think about who actually has to do the work, what it costs regular people, and whether it holds up on a Monday morning. You distrust anything that sounds good in a meeting but falls apart on the job." },
-  { name: "Priya", age: 27, job: "UX designer, Austin", temper: "Open to new things if people would actually use them.",
-    voice: "You're optimistic about change and think in terms of how real people experience things day to day. You're swayed by concrete examples of how something would feel to live with, and turned off by abstractions." },
-  { name: "Hank", age: 58, job: "Cattle rancher, Montana", temper: "Skeptical of big plans from far away.",
-    voice: "You value self-reliance and local control. You've watched plenty of grand ideas from people who never set foot on a ranch go sideways. Few words, plain talk, but you can be convinced by common sense." },
-  { name: "Jasmine", age: 19, job: "College sophomore, Atlanta", temper: "Impatient with 'that's how it's always been.'",
-    voice: "You're idealistic, quick, and online. You care about fairness and the future and you get annoyed by arguments that boil down to tradition. You talk casually, like a 19-year-old, not like a professor." },
-  { name: "Rev. Samuel", age: 63, job: "Baptist pastor, Memphis", temper: "Asks what it does to families and community.",
-    voice: "You weigh the moral side: what an idea does to families, neighbors, and people who get left behind. Warm, patient, but firm when something seems to treat people as numbers." },
-  { name: "Kenji", age: 45, job: "Insurance actuary, Hartford", temper: "Thinks in odds and downside risk.",
-    voice: "You think in probabilities, base rates, and worst cases. You notice when someone confuses an anecdote with a trend. You're calm and precise and you care about the expected outcome, not the best case." },
-  { name: "Tasha", age: 39, job: "ER nurse, Chicago", temper: "Looks for who gets hurt.",
-    voice: "You've worked 12-hour shifts cleaning up after other people's bad decisions. You look for unintended harm and safety risks first. Little patience for fluff. Direct and a bit tired." },
-  { name: "Luis", age: 50, job: "Owns a taco truck, Phoenix", temper: "Margins, customers, and red tape.",
-    voice: "You run a small business on thin margins. You think about cost, regulations, and whether this helps or hurts the little guy. Friendly and funny but you know what a bad deal looks like." },
-  { name: "Margaret", age: 82, job: "Widow, former city council member, Vermont", temper: "Has seen ideas like this before.",
-    voice: "You served 16 years on a city council. You care about process, precedent, and how things actually get implemented. You've seen good ideas die in execution and bad ones survive on charm. Sharp and a little wry." },
-  { name: "Devin", age: 31, job: "Startup founder, San Francisco", temper: "Loves a bold bet. Bored by caution.",
-    voice: "You like big swings and think most institutions are too cautious. You respect an idea that could scale. You can be contrarian and you're unimpressed by arguments that only list risks without weighing upside." },
-  { name: "Ruth", age: 44, job: "Single mom, school bus driver, Kansas City", temper: "What does this mean for my week?",
-    voice: "You raise two kids alone and drive a school bus. You care about time, money, and whether this makes regular families' lives easier or harder. Grounded, honest, no patience for people who talk down." }
+  { name: "Dolores", age: 71, job: "retired high school chemistry teacher in Ohio", voice: "You taught chemistry for 38 years. You grade arguments like lab reports: claims need evidence, and you dock points for exaggeration. Dry, stern, fair." },
+  { name: "Marcus", age: 34, job: "union electrician in Philadelphia", voice: "Practical and blunt. You think about who has to do the work and what it costs regular people. You distrust ideas that sound good in a meeting but fall apart on the job." },
+  { name: "Priya", age: 27, job: "UX designer in Austin", voice: "Optimistic about change. You think about how real people would experience it day to day and like concrete examples over abstractions." },
+  { name: "Hank", age: 58, job: "cattle rancher in Montana", voice: "You value self-reliance and local control and you've seen grand plans from far away go sideways. Few words, plain talk, but common sense can convince you." },
+  { name: "Jasmine", age: 19, job: "college sophomore in Atlanta", voice: "Idealistic, quick, online. You care about fairness and the future and get annoyed by arguments that boil down to tradition. You talk casually." },
+  { name: "Samuel", age: 63, job: "Baptist pastor in Memphis", voice: "You weigh what an idea does to families, neighbors, and people who get left behind. Warm and patient, firm when people get treated like numbers." },
+  { name: "Kenji", age: 45, job: "insurance actuary in Hartford", voice: "You think in probabilities, base rates, and worst cases, and you notice when an anecdote is passed off as a trend. Calm and precise." },
+  { name: "Tasha", age: 39, job: "ER nurse in Chicago", voice: "You've cleaned up after plenty of bad decisions. You look for unintended harm and safety risks first. Direct, a little tired, no patience for fluff." },
+  { name: "Luis", age: 50, job: "taco truck owner in Phoenix", voice: "You run a small business on thin margins. Cost, red tape, and whether this helps the little guy. Friendly and funny but you know a bad deal." },
+  { name: "Margaret", age: 82, job: "former city council member in Vermont", voice: "Sixteen years on a city council. You care about process, precedent, and how things actually get implemented. Sharp and a little wry." },
+  { name: "Devin", age: 31, job: "startup founder in San Francisco", voice: "You like big swings and think most institutions are too cautious. Contrarian, unimpressed by arguments that list risks without weighing upside." },
+  { name: "Ruth", age: 44, job: "single mom and school bus driver in Kansas City", voice: "You raise two kids alone. Time, money, and whether this makes regular families' lives easier or harder. Grounded, honest, no patience for being talked down to." }
 ];
 
-// One prop per juror, drawn on a 32x32 pixel grid over the body
-const INK = "#1b1410", WHITE = "#f7f4ee";
-const pearls = [10, 12, 14, 16, 18, 20, 22].map((x) => `<circle cx="${x}" cy="21" r=".8" fill="${WHITE}"/>`).join("");
+/* ---------- Three.js scene ---------- */
+const T = THREE;
+const CORAL = 0xd97757, INK = 0x1b1410, WHITE = 0xf7f4ee;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const host = document.getElementById("game");
+const renderer = new T.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = T.PCFSoftShadowMap;
+host.appendChild(renderer.domElement);
+const scene = new T.Scene();
+scene.background = new T.Color(0x1a130e);
+scene.fog = new T.Fog(0x1a130e, 22, 40);
+const camera = new T.PerspectiveCamera(45, 1, 0.1, 100);
+
+scene.add(new T.HemisphereLight(0xfff1dc, 0x3a2516, 0.75));
+const sun = new T.DirectionalLight(0xffe6c4, 0.85);
+sun.position.set(6, 12, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 40 });
+scene.add(sun);
+const lamp = new T.PointLight(0xffc98a, 0.5, 16);
+lamp.position.set(0, 5, -4);
+scene.add(lamp);
+
+const mats = {};
+const mat = (c) => mats[c] || (mats[c] = new T.MeshLambertMaterial({ color: c }));
+function box(parent, w, h, d, color, x = 0, y = 0, z = 0, shadow = true) {
+  const m = new T.Mesh(new T.BoxGeometry(w, h, d), typeof color === "number" ? mat(color) : color);
+  m.position.set(x, y, z);
+  m.castShadow = shadow; m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+function canvasTex(w, h, draw) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new T.CanvasTexture(c); t.anisotropy = 4;
+  return t;
+}
+
+/* Room */
+const room = new T.Group(); scene.add(room);
+box(room, 28, 0.2, 22, 0x8a5a36, 0, -0.1, 0).castShadow = false;
+for (let x = -13; x <= 13; x += 1.3) box(room, 0.04, 0.01, 22, 0x6e4529, x, 0.005, 0, false);
+box(room, 28, 2.6, 0.3, 0x5b3a26, 0, 1.3, -9);
+box(room, 28, 7, 0.3, 0xe7d8bd, 0, 6.1, -9.05, false);
+box(room, 28, 0.2, 0.4, 0x3f281a, 0, 2.6, -8.9);
+[-13.5, 13.5].forEach((x) => { box(room, 0.3, 2.6, 22, 0x5b3a26, x, 1.3, 0); box(room, 0.3, 7, 22, 0xe7d8bd, x * 1.003, 6.1, 0, false); });
+// seal
+const seal = new T.Mesh(new T.CylinderGeometry(1.25, 1.25, 0.12, 40), mat(0xc8952e));
+seal.rotation.x = Math.PI / 2; seal.position.set(0, 5.9, -8.85); room.add(seal);
+const sealIn = new T.Mesh(new T.CylinderGeometry(0.95, 0.95, 0.14, 40), mat(0x23324d));
+sealIn.rotation.x = Math.PI / 2; sealIn.position.set(0, 5.9, -8.82); room.add(sealIn);
+box(room, 0.08, 0.9, 0.06, 0xc8952e, 0, 5.85, -8.72, false);
+box(room, 1.1, 0.07, 0.06, 0xc8952e, 0, 6.25, -8.72, false);
+[-0.45, 0.45].forEach((x) => box(room, 0.32, 0.06, 0.06, 0xc8952e, x, 5.75, -8.72, false));
+// flags
+const flagTex = canvasTex(192, 120, (g, w, h) => {
+  for (let i = 0; i < 13; i++) { g.fillStyle = i % 2 ? "#f4f1ea" : "#b22234"; g.fillRect(0, (i * h) / 13, w, h / 13 + 1); }
+  g.fillStyle = "#3c3b6e"; g.fillRect(0, 0, w * 0.42, (h * 7) / 13);
+  g.fillStyle = "#f4f1ea";
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 6; c++) { g.beginPath(); g.arc(8 + c * 13, 7 + r * 12, 2.4, 0, 7); g.fill(); }
+});
+[-4.6, 4.6].forEach((x) => {
+  box(room, 0.08, 5.2, 0.08, 0xc8952e, x, 2.6, -8.3);
+  const f = new T.Mesh(new T.PlaneGeometry(1.6, 1.0), new T.MeshLambertMaterial({ map: flagTex, side: T.DoubleSide }));
+  f.position.set(x + (x < 0 ? 0.84 : -0.84), 4.55, -8.3); room.add(f);
+});
+// judge platform and bench
+box(room, 7.4, 1.1, 2.8, 0x4a2f1f, 0, 0.55, -7.3);
+box(room, 6.6, 1.75, 0.9, 0x6b4328, 0, 0.875, -5.75);
+box(room, 7.0, 0.12, 1.2, 0x3f281a, 0, 1.8, -5.8);
+for (let x = -2.6; x <= 2.6; x += 1.3) box(room, 1.0, 1.1, 0.04, 0x5b3a26, x, 0.9, -5.28, false);
+box(room, 0.5, 0.1, 0.4, 0x3f281a, 1.1, 1.91, -5.8); // sound block
+// counsel tables
+const TABLES = { for: new T.Vector3(-3.2, 0, 1.0), against: new T.Vector3(3.0, 0, 1.0) };
+function counselTable(p, cloth) {
+  const g = new T.Group(); g.position.copy(p); room.add(g);
+  box(g, 2.8, 0.12, 1.2, 0x6b4328, 0, 0.9, 0);
+  [[-1.25, -0.5], [1.25, -0.5], [-1.25, 0.5], [1.25, 0.5]].forEach(([x, z]) => box(g, 0.1, 0.9, 0.1, 0x4a2f1f, x, 0.45, z));
+  box(g, 2.8, 0.55, 0.05, cloth, 0, 0.6, -0.6);
+  [0x2b4a7a, 0x7a2b2b, 0x3d6b3a, 0xc8952e].forEach((c, i) => box(g, 0.5, 0.1, 0.36, c, -0.8, 1.01 + i * 0.1, 0.05 * (i % 2)));
+  box(g, 0.6, 0.38, 0.16, 0x3a2516, 0.9, 1.15, 0);
+  return g;
+}
+counselTable(TABLES.for, 0x2f9e7e);
+counselTable(TABLES.against, 0xd1495b);
+// bar rail and gallery
+box(room, 7.5, 0.9, 0.12, 0x5b3a26, -5.2, 0.45, 3.4); box(room, 7.5, 0.9, 0.12, 0x5b3a26, 5.2, 0.45, 3.4);
+[4.8, 6.3, 7.8].forEach((z) => { box(room, 7, 0.45, 0.7, 0x6b4328, -5, 0.45, z); box(room, 7, 0.45, 0.7, 0x6b4328, 5, 0.45, z); box(room, 7, 0.7, 0.12, 0x5b3a26, -5, 0.9, z + 0.35); box(room, 7, 0.7, 0.12, 0x5b3a26, 5, 0.9, z + 0.35); });
+// jury box
+box(room, 1.4, 0.3, 8.2, 0x4a2f1f, 7.1, 0.15, -1.3);
+box(room, 1.4, 0.7, 8.2, 0x3f281a, 8.5, 0.35, -1.3);
+box(room, 0.15, 0.95, 8.4, 0x6b4328, 6.3, 0.475, -1.3);
+box(room, 0.3, 0.08, 8.5, 0x3f281a, 6.3, 0.99, -1.3);
+box(room, 3, 0.95, 0.15, 0x6b4328, 7.8, 0.475, 2.85);
+
+/* Critters */
+function critter(scale = 1) {
+  const root = new T.Group(); root.scale.setScalar(scale);
+  const hop = new T.Group(); root.add(hop);
+  const body = new T.Group(); hop.add(body);
+  const legs = [-0.36, -0.12, 0.12, 0.36].map((x) => { const l = box(hop, 0.13, 0.42, 0.16, CORAL, x, 0.21, 0); l.userData.y = 0.21; return l; });
+  box(body, 1.0, 0.72, 0.62, CORAL, 0, 0.78, 0);
+  const armL = new T.Group(); armL.position.set(-0.5, 0.84, 0); body.add(armL); box(armL, 0.24, 0.26, 0.3, CORAL, -0.12, 0, 0);
+  const armR = new T.Group(); armR.position.set(0.5, 0.84, 0); body.add(armR); box(armR, 0.24, 0.26, 0.3, CORAL, 0.12, 0, 0);
+  const eyes = new T.Group(); eyes.position.set(0, 0.84, 0.315); body.add(eyes);
+  box(eyes, 0.09, 0.22, 0.02, INK, -0.2, 0, 0, false); box(eyes, 0.09, 0.22, 0.02, INK, 0.2, 0, 0, false);
+  const dots = new T.Group(); root.add(dots); dots.visible = false;
+  [[0.38, 1.32, 0.06], [0.55, 1.52, 0.085], [0.78, 1.8, 0.12]].forEach(([x, y, r]) => { const m = new T.Mesh(new T.SphereGeometry(r, 14, 10), mat(0xffffff)); m.position.set(x, y, 0); dots.add(m); });
+  return { root, hop, body, armL, armR, eyes, legs, dots, top: 1.2 * scale, mode: "idle", phase: Math.random() * 6, face: null, walk: null, t0: 0, sign: null, signOn: false, ballot: null };
+}
+
 const PROPS = [
-  `<rect x="12" y="6" width="8" height="4" fill="#c8c6c2"/><g fill="none" stroke="${INK}"><rect x="9.5" y="13.5" width="5" height="5"/><rect x="17.5" y="13.5" width="5" height="5"/></g><rect x="14" y="15" width="4" height="1" fill="${INK}"/>`,
-  `<rect x="8" y="6" width="16" height="4" fill="#f2c230"/><rect x="5" y="9" width="22" height="2" fill="#f2c230"/><rect x="15" y="6" width="2" height="4" fill="#d9a514"/>`,
-  `<rect x="7" y="6" width="18" height="2" fill="#7a6ae0"/><rect x="5" y="7" width="2" height="4" fill="#7a6ae0"/><rect x="25" y="7" width="2" height="4" fill="#7a6ae0"/><rect x="4" y="10" width="3" height="5" fill="#5a4bc0"/><rect x="25" y="10" width="3" height="5" fill="#5a4bc0"/>`,
-  `<rect x="10" y="3" width="12" height="6" fill="#8a5a2b"/><rect x="10" y="7" width="12" height="1" fill="#5e3b19"/><rect x="3" y="9" width="26" height="2" fill="#8a5a2b"/>`,
-  `<rect x="8" y="6" width="16" height="5" fill="#e86aa6"/><rect x="8" y="9" width="16" height="2" fill="#c94f8a"/><rect x="14" y="3" width="4" height="3" fill="${WHITE}"/>`,
-  `<rect x="6" y="21" width="20" height="2" fill="${INK}"/><rect x="15" y="21" width="2" height="2" fill="${WHITE}"/>`,
-  `<rect x="14" y="20" width="4" height="2" fill="#2b3f74"/><rect x="15" y="22" width="2" height="5" fill="#2b3f74"/>`,
-  `<rect x="10" y="6" width="12" height="4" fill="${WHITE}" stroke="#9aa3ad" stroke-width=".5"/><rect x="15" y="6.5" width="2" height="3" fill="#d23c3c"/><rect x="14" y="7.5" width="4" height="1" fill="#d23c3c"/>`,
-  `<rect x="6" y="10" width="20" height="3" fill="#d23c3c"/><rect x="25" y="11" width="3" height="2" fill="#d23c3c"/><rect x="12" y="19" width="8" height="1.5" fill="#4a2c17"/>`,
-  `<rect x="12" y="6" width="8" height="4" fill="#dedbd5"/><rect x="14" y="4" width="4" height="2" fill="#dedbd5"/>${pearls}`,
-  `<rect x="9" y="14" width="6" height="4" fill="${INK}"/><rect x="17" y="14" width="6" height="4" fill="${INK}"/><rect x="15" y="14" width="2" height="1" fill="${INK}"/>`,
-  `<rect x="8" y="6" width="16" height="4" fill="#3c64b4"/><rect x="5" y="9" width="12" height="2" fill="#2c4d92"/><rect x="15" y="7" width="2" height="2" fill="#f2c230"/>`
+  (b) => { box(b, 0.36, 0.2, 0.3, 0xc8c6c2, 0, 1.24, -0.05); box(b, 0.66, 0.05, 0.03, INK, 0, 0.97, 0.33, false); [-0.33, -0.07, 0.07, 0.33].forEach((x) => box(b, 0.035, 0.27, 0.03, INK, x, 0.84, 0.33, false)); box(b, 0.66, 0.035, 0.03, INK, 0, 0.71, 0.33, false); },
+  (b) => { box(b, 0.84, 0.2, 0.64, 0xf2c230, 0, 1.24, 0); box(b, 1.1, 0.05, 0.84, 0xf2c230, 0, 1.16, 0.04); box(b, 0.1, 0.22, 0.66, 0xd9a514, 0, 1.26, 0); },
+  (b) => { box(b, 0.9, 0.08, 0.14, 0x7a6ae0, 0, 1.2, 0); [-1, 1].forEach((s) => { box(b, 0.08, 0.22, 0.14, 0x7a6ae0, s * 0.48, 1.1, 0); box(b, 0.12, 0.28, 0.28, 0x5a4bc0, s * 0.55, 0.96, 0); }); },
+  (b) => { box(b, 0.56, 0.3, 0.5, 0x8a5a2b, 0, 1.33, 0); box(b, 0.57, 0.06, 0.51, 0x5e3b19, 0, 1.22, 0); box(b, 1.4, 0.05, 1.0, 0x8a5a2b, 0, 1.17, 0); },
+  (b) => { box(b, 0.86, 0.24, 0.66, 0xe86aa6, 0, 1.24, 0); box(b, 0.88, 0.08, 0.68, 0xc94f8a, 0, 1.14, 0); box(b, 0.17, 0.17, 0.17, WHITE, 0, 1.44, 0); },
+  (b) => { box(b, 1.02, 0.08, 0.64, INK, 0, 0.6, 0); box(b, 0.13, 0.08, 0.02, WHITE, 0, 0.6, 0.325, false); },
+  (b) => { box(b, 0.15, 0.1, 0.03, 0x2b3f74, 0, 0.62, 0.33, false); box(b, 0.1, 0.24, 0.03, 0x2b3f74, 0, 0.47, 0.33, false); },
+  (b) => { box(b, 0.5, 0.2, 0.36, WHITE, 0, 1.24, 0.05); box(b, 0.06, 0.14, 0.02, 0xd23c3c, 0, 1.24, 0.235, false); box(b, 0.15, 0.05, 0.02, 0xd23c3c, 0, 1.24, 0.235, false); },
+  (b) => { box(b, 1.02, 0.15, 0.64, 0xd23c3c, 0, 1.06, 0); box(b, 0.1, 0.14, 0.2, 0xd23c3c, -0.45, 1.02, -0.38); box(b, 0.36, 0.06, 0.03, 0x4a2c17, 0, 0.66, 0.33, false); },
+  (b) => { box(b, 0.34, 0.2, 0.3, 0xdedbd5, 0, 1.24, -0.05); box(b, 0.18, 0.12, 0.18, 0xdedbd5, 0, 1.39, -0.05); for (let x = -0.3; x <= 0.31; x += 0.1) box(b, 0.06, 0.06, 0.04, WHITE, x, 0.56, 0.33, false); },
+  (b) => { box(b, 0.64, 0.17, 0.03, INK, 0, 0.86, 0.335, false); box(b, 0.04, 0.04, 0.3, INK, -0.32, 0.9, 0.18, false); box(b, 0.04, 0.04, 0.3, INK, 0.32, 0.9, 0.18, false); },
+  (b) => { box(b, 0.8, 0.18, 0.62, 0x3c64b4, 0, 1.23, 0); box(b, 0.6, 0.04, 0.3, 0x2c4d92, 0, 1.15, 0.42); box(b, 0.1, 0.08, 0.02, 0xf2c230, 0, 1.24, 0.315, false); }
 ];
 
-function miniSvg(i) {
-  return `<svg class="mini" viewBox="0 0 32 32" aria-hidden="true"><g class="hop">
-    <g class="leg-a body"><rect x="8" y="24" width="2" height="4"/><rect x="18" y="24" width="2" height="4"/></g>
-    <g class="leg-b body"><rect x="12" y="24" width="2" height="4"/><rect x="22" y="24" width="2" height="4"/></g>
-    <g class="bob">
-      <rect class="arm-l body" x="3" y="15" width="3" height="4"/>
-      <rect class="arm-r body" x="26" y="15" width="3" height="4"/>
-      <rect class="body" x="6" y="10" width="20" height="14"/>
-      <g class="look"><g class="eyes" fill="${INK}"><rect x="11" y="14" width="2" height="4"/><rect x="19" y="14" width="2" height="4"/></g></g>
-      ${PROPS[i]}
-      <g class="env"><rect x="10" y="17" width="12" height="8" fill="${WHITE}" stroke="#8f6b12" stroke-width=".8"/><polyline points="10,17 16,22 22,17" fill="none" stroke="#8f6b12" stroke-width=".8"/></g>
-    </g></g></svg>`;
-}
+// Judge
+const judge = critter(1.3);
+box(judge.body, 1.06, 0.42, 0.68, 0x14110f, 0, 0.6, 0);
+box(judge.body, 0.4, 0.12, 0.02, WHITE, 0, 0.78, 0.33, false);
+const gavel = new T.Group(); gavel.position.set(0.14, 0, 0.12); judge.armR.add(gavel);
+box(gavel, 0.05, 0.05, 0.42, 0x6b4423, 0, 0, 0.2);
+box(gavel, 0.28, 0.14, 0.14, 0x4a2e17, 0, 0, 0.42);
+judge.root.position.set(0, 1.1, -6.7);
+judge.face = new T.Vector3(0, 0, 5);
+judge.rest = 0.5;
+scene.add(judge.root);
 
-const MOODS = ["think", "sealed", "yay", "nay", "excused"];
-function mood(i, m) {
-  const s = document.getElementById("seat" + i);
-  s.classList.remove(...MOODS);
-  if (m) s.classList.add(m);
+// Lawyers
+function lawyer(suit, tie) {
+  const c = critter(1);
+  box(c.body, 1.04, 0.36, 0.66, suit, 0, 0.6, 0);
+  box(c.body, 0.14, 0.1, 0.03, tie, 0, 0.7, 0.34, false);
+  box(c.body, 0.1, 0.22, 0.03, tie, 0, 0.56, 0.34, false);
+  scene.add(c.root);
+  return c;
 }
-function look(dir) {
-  document.querySelectorAll(".seat").forEach((s) => {
-    s.classList.remove("look-for", "look-against", "look-up");
-    if (dir) s.classList.add("look-" + dir);
+const counsel = { for: lawyer(0x24324a, 0x2f9e7e), against: lawyer(0x2f2f33, 0xd1495b) };
+const SPOT = { for: new T.Vector3(-3.2, 0, 2.3), against: new T.Vector3(3.0, 0, 2.3) };
+const PODIUM = new T.Vector3(0.6, 0, -0.6);
+const JUDGE_SPOT = new T.Vector3(0, 0, -6.7);
+
+// Papers for research
+const papers = [];
+["for", "against"].forEach((side) => {
+  for (let i = 0; i < 7; i++) {
+    const m = new T.Mesh(new T.PlaneGeometry(0.24, 0.32), new T.MeshLambertMaterial({ color: 0xffffff, side: T.DoubleSide, transparent: true }));
+    m.visible = false; scene.add(m);
+    papers.push({ m, side, ph: Math.random() });
+  }
+});
+let researching = false;
+
+// Jurors
+const juryRoot = new T.Group(); scene.add(juryRoot);
+const jurors = JURORS.map((j, i) => {
+  const c = critter(0.82);
+  PROPS[i](c.body);
+  const row = i < 6 ? 0 : 1, k = i % 6;
+  c.home = new T.Vector3(row ? 8.5 : 7.1, row ? 0.7 : 0.3, -1.3 + (k - 2.5) * 1.3 + (row ? 0.3 : 0));
+  c.root.position.copy(c.home);
+  // sign
+  const sign = new T.Group(); sign.position.set(0, row ? 2.75 : 1.9, 0.12); sign.scale.setScalar(0.001); c.body.add(sign);
+  box(sign, 0.06, 0.8, 0.06, 0x8a5a36, 0, -0.35, 0);
+  const faceMat = new T.MeshBasicMaterial({ color: 0xffffff });
+  const edge = mat(0xe8dcc6);
+  const board = new T.Mesh(new T.BoxGeometry(1.1, 0.68, 0.06), [edge, edge, edge, edge, faceMat, faceMat]);
+  board.position.y = 0.2; board.castShadow = true; sign.add(board);
+  c.sign = sign; c.signFace = faceMat;
+  c.ballot = box(c.body, 0.34, 0.24, 0.04, WHITE, 0, 0.72, 0.42);
+  c.ballot.visible = false;
+  juryRoot.add(c.root);
+  return c;
+});
+const JURY_LOOK = new T.Vector3(0, 0, -1);
+
+let signTex = null;
+function makeSignTex() {
+  const draw = (bg, word) => canvasTex(256, 160, (g, w, h) => {
+    g.fillStyle = bg; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "rgba(0,0,0,.25)"; g.lineWidth = 10; g.strokeRect(5, 5, w - 10, h - 10);
+    g.fillStyle = "#fff"; g.font = '700 92px Fredoka, "Arial Black", sans-serif'; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(word, w / 2, h / 2 + 6);
   });
+  signTex = { YAY: draw("#2f9e7e", "YAY"), NAY: draw("#d1495b", "NAY") };
 }
 
-const $ = (s) => document.querySelector(s);
-const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+/* ---------- Animation ---------- */
+const clock = new T.Clock();
+let now = 0;
+const ease = (k) => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const lerp = (a, b, k) => a + (b - a) * k;
+function lerpAngle(a, b, k) { let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI; if (d < -Math.PI) d += Math.PI * 2; return a + d * k; }
 
-let sample = null;
-let ctl = null;
-let running = false;
-let trial = null;
-
-/* Setup */
-const ideaBox = $("#idea");
-try { const d = localStorage.getItem("court-idea-draft"); if (d) ideaBox.value = d; } catch (e) {}
-function syncCount() {
-  $("#charCount").textContent = ideaBox.value.length + " / 600";
-  try { localStorage.setItem("court-idea-draft", ideaBox.value); } catch (e) {}
+function walkTo(c, to, dur = 1.6) {
+  c.walk = { from: c.root.position.clone(), to: to.clone(), t0: now, dur: reduced ? 0.01 : dur };
+  return wait(reduced ? 50 : dur * 1000);
 }
-ideaBox.addEventListener("input", syncCount);
-syncCount();
+function setMode(c, m) { c.mode = m; c.t0 = now; }
 
-function renderSeats() {
-  const box = $("#jury");
-  box.replaceChildren();
-  JURORS.forEach((j, i) => {
-    const s = el("div", "seat"); s.id = "seat" + i;
-    s.style.setProperty("--d", (-i * 0.37).toFixed(2) + "s");
-    s.style.setProperty("--i", i);
-    const stage = el("div", "stage");
-    stage.innerHTML = miniSvg(i) + '<div class="bubble" aria-hidden="true"><span></span><span></span><span></span></div><span class="zz" aria-hidden="true">z</span>';
-    s.append(stage, el("span", "no", "Juror No. " + (i + 1)), el("span", "name", j.name + ", " + j.age), el("span", "job", j.job),
-      el("span", "temper", j.temper));
-    const b = el("div", "ballot", "Listening"); b.id = "ballot" + i;
-    s.append(b);
-    box.append(s);
-  });
-}
-renderSeats();
+function updateCritter(c, dt) {
+  const t = now, k = 1 - Math.exp(-dt * 9);
+  let walking = false;
+  if (c.walk) {
+    const p = Math.min(1, (t - c.walk.t0) / c.walk.dur);
+    c.root.position.lerpVectors(c.walk.from, c.walk.to, ease(p));
+    walking = p < 1;
+    if (!walking) c.walk = null;
+  }
+  const target = walking ? c.walk.to : c.face;
+  if (target) {
+    const dx = target.x - c.root.position.x, dz = target.z - c.root.position.z;
+    if (dx * dx + dz * dz > 0.01) c.root.rotation.y = lerpAngle(c.root.rotation.y, Math.atan2(dx, dz), 1 - Math.exp(-dt * 6));
+  }
+  c.legs.forEach((l, i) => { l.position.y = l.userData.y + (walking ? Math.max(0, Math.sin(t * 14 + (i % 2) * Math.PI)) * 0.12 : 0); });
 
-function notice(msg) { const n = $("#notice"); n.textContent = msg || ""; n.hidden = !msg; }
-
-if (!window.claude || typeof window.claude.use !== "function") {
-  notice("Open this page in Claude to hold a trial. The lawyers, jurors and judge all run on Claude.");
-  $("#fileBtn").disabled = true;
-} else {
-  window.claude.use("sample").then((s) => {
-    sample = s;
-    if (!s) { notice("This view can't reach Claude, so trials can't run here."); $("#fileBtn").disabled = true; }
-  });
-}
-
-function setStep(name) {
-  const order = ["research", "args", "jury", "unseal", "verdict"];
-  const idx = order.indexOf(name);
-  document.querySelectorAll(".step").forEach((s) => {
-    const i = order.indexOf(s.dataset.step);
-    s.classList.toggle("done", idx === -1 ? name === "done" : i < idx);
-    s.classList.toggle("active", i === idx);
-  });
-  if (name === "done") document.querySelectorAll(".step").forEach((s) => { s.classList.add("done"); s.classList.remove("active"); });
-}
-
-function errCopy(e) {
-  switch (e && e.code) {
-    case "not_granted": return "Claude wasn't allowed to run on this page, so the trial can't continue.";
-    case "sampling_disabled": return "Claude isn't available on this account.";
-    case "rate_limited": return "Too many requests right now. Wait a minute and file again.";
-    case "session_expired": return "Your Claude session expired. Sign in again and refile.";
-    case "refused": return "Claude declined to try this one. Reword the idea and refile.";
-    case "invalid_json": return "A response came back garbled. File the case again.";
-    default: return "Something went wrong reaching Claude. File the case again.";
+  let hopY = Math.sin(t * 2.2 + c.phase) * 0.025, rx = 0, rz = 0, ry = 0, aL = 0.15, aR = 0.15, armX = 0;
+  const since = t - c.t0;
+  switch (c.mode) {
+    case "talk": aR = 0.9 + Math.sin(t * 5) * 0.7; aL = 0.4 + Math.sin(t * 3.3 + 1) * 0.35; hopY += Math.abs(Math.sin(t * 6)) * 0.04; rz = Math.sin(t * 2.5) * 0.05; break;
+    case "think": rz = Math.sin(t * 2.4 + c.phase) * 0.08; aR = 1.5 + Math.sin(t * 4) * 0.15; break;
+    case "research": rx = 0.3 + Math.sin(t * 3 + c.phase) * 0.06; aL = 0.7 + Math.sin(t * 8) * 0.3; aR = 0.7 + Math.sin(t * 8 + 2) * 0.3; break;
+    case "sealed": aL = aR = 0.25; armX = -0.9; if (since < 0.45) hopY += Math.sin((since / 0.45) * Math.PI) * 0.3; break;
+    case "yay": aL = aR = 2.7; if (since < 1.3) hopY += Math.abs(Math.sin(since * 7.2)) * 0.45; break;
+    case "nay": aL = aR = 2.7; if (since < 1.2) ry = Math.sin(since * 22) * 0.3 * (1 - since / 1.2); break;
+    case "cheer": aL = aR = 2.8; hopY += Math.abs(Math.sin(t * 8)) * 0.45; break;
+    case "sad": rx = 0.4; aL = aR = -0.05; hopY -= 0.05; break;
+    case "shrug": aL = aR = 1.2 + Math.sin(t * 3) * 0.25; break;
+    case "lookup": rx = -0.12; break;
+  }
+  if (walking) { aL = 0.3 + Math.sin(t * 14) * 0.45; aR = 0.3 - Math.sin(t * 14) * 0.45; hopY += Math.abs(Math.sin(t * 14)) * 0.05; }
+  c.hop.position.y = hopY;
+  c.body.rotation.x = lerp(c.body.rotation.x, rx, k);
+  c.body.rotation.z = lerp(c.body.rotation.z, rz, k);
+  c.body.rotation.y = c.mode === "nay" ? ry : lerp(c.body.rotation.y, 0, k);
+  c.armL.rotation.z = lerp(c.armL.rotation.z, -aL, k);
+  c.armL.rotation.x = lerp(c.armL.rotation.x, armX, k);
+  if (c.gavel) {
+    const g = c.gavel, p = (t - g.t0) / 0.42;
+    if (p >= g.hits) { c.gavel = null; }
+    else { const f = p % 1; c.armR.rotation.x = f < 0.55 ? lerp(-0.2, -1.5, f / 0.55) : lerp(-1.5, 0.35, (f - 0.55) / 0.45); c.armR.rotation.z = 0.35; }
+  }
+  if (!c.gavel) {
+    c.armR.rotation.z = lerp(c.armR.rotation.z, aR, k);
+    c.armR.rotation.x = lerp(c.armR.rotation.x, c.rest != null ? 0.1 : armX, k);
+  }
+  const blink = ((t + c.phase * 0.7) % 4.2) < 0.13;
+  const squint = c.mode === "nay" && since < 1.5;
+  c.eyes.scale.y = blink ? 0.12 : squint ? 0.45 : 1;
+  c.dots.visible = c.mode === "think";
+  if (c.dots.visible) c.dots.children.forEach((d, i) => { d.position.y = [1.32, 1.52, 1.8][i] + Math.sin(t * 4 + i) * 0.04; });
+  if (c.sign) {
+    const s = lerp(c.sign.scale.x, c.signOn ? 1 : 0.001, 1 - Math.exp(-dt * 12));
+    c.sign.scale.setScalar(s);
+    c.sign.visible = s > 0.01;
+    c.ballot.visible = c.mode === "sealed";
   }
 }
-const FATAL = new Set(["not_granted", "sampling_disabled", "session_expired", "not_declared", "capability_disabled"]);
 
-/* Prompts */
+/* Camera */
+const camTarget = new T.Vector3(0, 1.2, -2);
+const cam = { fromP: new T.Vector3(), fromT: new T.Vector3(), toP: new T.Vector3(), toT: new T.Vector3(), t0: -10, dur: 1, shot: "orbit" };
+function shot(name) {
+  const S = {
+    judge: [[0, 3.5, -1.0], [0, 2.75, -6.6]],
+    tables: [[0, 4.6, 7.5], [0, 1.0, 1.2]],
+    podium: [[1.2, 2.3, 3.1], [0.8, 1.3, -0.6]],
+    jury: [[-0.8, 4.3, -0.9], [7.8, 1.5, -1.2]],
+    wide: [[0, 7.2, 12.5], [0, 1.2, -2]]
+  }[name];
+  const p = new T.Vector3(...S[0]), t = new T.Vector3(...S[1]);
+  const a = camera.aspect, f = a < 1.3 ? Math.min(2.2, 1.3 / a) : 1;
+  if (f > 1) p.sub(t).multiplyScalar(f).add(t);
+  return { p, t };
+}
+function camTo(name, dur = 1.5) {
+  cam.shot = name;
+  if (name === "orbit") return;
+  const s = shot(name);
+  cam.fromP.copy(camera.position); cam.fromT.copy(camTarget);
+  cam.toP.copy(s.p); cam.toT.copy(s.t);
+  cam.t0 = now; cam.dur = reduced ? 0.001 : dur;
+}
+function updateCamera() {
+  if (cam.shot === "orbit") {
+    const a = Math.sin(now * 0.1) * 0.55, f = camera.aspect < 1.3 ? Math.min(2.2, 1.3 / camera.aspect) : 1;
+    const want = new T.Vector3(Math.sin(a) * 12 * f, 6.5 + (f - 1) * 2, -1 + Math.cos(a) * 12 * f);
+    camera.position.lerp(want, 0.03);
+    camTarget.lerp(new T.Vector3(0, 1.4, -2.5), 0.03);
+  } else {
+    const p = Math.min(1, (now - cam.t0) / cam.dur), e = ease(p);
+    camera.position.lerpVectors(cam.fromP, cam.toP, e);
+    camTarget.lerpVectors(cam.fromT, cam.toT, e);
+    if (!reduced) { camera.position.x += Math.sin(now * 0.4) * 0.05; camera.position.y += Math.sin(now * 0.33) * 0.03; }
+  }
+  camera.lookAt(camTarget);
+}
+camera.position.set(0, 7, 13);
+
+function resize() {
+  const w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  if (cam.shot !== "orbit") { const s = shot(cam.shot); cam.toP.copy(s.p); cam.toT.copy(s.t); }
+}
+new ResizeObserver(resize).observe(host);
+resize();
+
+/* ---------- Speech bubble ---------- */
+const bubbleEl = document.getElementById("bubble"), txtEl = document.getElementById("txt"), whoEl = document.getElementById("who");
+const nextEl = document.getElementById("next"), tailEl = document.getElementById("tail"), tapHint = document.getElementById("tapHint");
+const bubble = { open: false, who: null, line: null, shown: 0, lastLen: -1 };
+const WAIT_DOTS = "<i></i><i></i><i></i>";
+
+function openBubble(c, label, color, line) {
+  bubble.open = true; bubble.who = c; bubble.line = line; bubble.shown = 0; bubble.lastLen = -1;
+  whoEl.textContent = label;
+  bubbleEl.style.setProperty("--who", color);
+  txtEl.className = "txt wait"; txtEl.innerHTML = WAIT_DOTS;
+  bubbleEl.hidden = false;
+  bubbleEl.classList.remove("pop"); void bubbleEl.offsetWidth; bubbleEl.classList.add("pop");
+}
+function closeBubble() { bubble.open = false; bubbleEl.hidden = true; nextEl.hidden = true; }
+const bubbleComplete = () => bubble.open && bubble.line.done && bubble.shown >= bubble.line.text.length;
+
+const tmpV = new T.Vector3();
+function updateBubble(dt) {
+  if (!bubble.open) return;
+  const line = bubble.line, target = line.text;
+  if (target.length) {
+    bubble.shown = Math.min(target.length, bubble.shown + dt * (line.done ? 70 : 45));
+    const n = Math.floor(bubble.shown);
+    if (n !== bubble.lastLen) {
+      if (txtEl.classList.contains("wait")) { txtEl.className = "txt"; }
+      txtEl.textContent = target.slice(0, n);
+      txtEl.scrollTop = txtEl.scrollHeight;
+      bubble.lastLen = n;
+    }
+  }
+  nextEl.hidden = !(bubbleComplete() && advanceCb);
+  // anchor above the speaker's head
+  const c = bubble.who;
+  tmpV.set(0, c.top / c.root.scale.y + 0.45, 0);
+  c.root.localToWorld(tmpV);
+  tmpV.project(camera);
+  const W = innerWidth, H = innerHeight;
+  const x = (tmpV.x * 0.5 + 0.5) * W, y = (-tmpV.y * 0.5 + 0.5) * H;
+  const bw = bubbleEl.offsetWidth, bh = bubbleEl.offsetHeight;
+  const left = Math.max(12, Math.min(W - bw - 12, x - bw / 2));
+  let top = y - bh - 22;
+  const hiddenTail = top < 60 || tmpV.z > 1;
+  top = Math.max(60, Math.min(H - bh - 100, top));
+  bubbleEl.style.transform = `translate(${left}px, ${top}px)`;
+  tailEl.hidden = hiddenTail;
+  tailEl.style.left = Math.max(26, Math.min(bw - 26, x - left)) + "px";
+}
+
+/* Advance on tap / space */
+let advanceCb = null;
+function waitAdvance() { return new Promise((r) => { advanceCb = r; }); }
+function onTap() {
+  if (bubble.open && !bubbleComplete()) { if (bubble.line.done) bubble.shown = bubble.line.text.length; return; }
+  if (advanceCb) { const cb = advanceCb; advanceCb = null; cb(); }
+}
+host.addEventListener("pointerdown", onTap);
+bubbleEl.addEventListener("pointerdown", onTap);
+addEventListener("keydown", (e) => {
+  if (document.activeElement && document.activeElement.id === "idea") return;
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); onTap(); }
+});
+
+/* ---------- Sound ---------- */
+let audio = null;
+function thunk() {
+  if (!audio) return;
+  const t = audio.currentTime;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = "triangle"; o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.12);
+  g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.2);
+}
+function bangGavel(hits = 3) {
+  judge.gavel = { t0: now, hits };
+  for (let i = 0; i < hits; i++) setTimeout(thunk, (i * 0.42 + 0.32) * 1000);
+  return wait(hits * 420 + 150);
+}
+
+/* ---------- Loop ---------- */
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  now += dt;
+  updateCamera();
+  [judge, counsel.for, counsel.against, ...jurors].forEach((c) => updateCritter(c, dt));
+  papers.forEach((p) => {
+    p.m.visible = researching;
+    if (!researching) return;
+    const life = (now * 0.55 + p.ph) % 1, base = TABLES[p.side];
+    p.m.position.set(base.x - 0.8 + Math.sin(p.ph * 20) * 0.7 * life, 1.15 + life * 2.2, base.z + Math.cos(p.ph * 13) * 0.5 * life);
+    p.m.rotation.set(now * 2 + p.ph * 9, now * 1.3 + p.ph * 5, 0);
+    p.m.material.opacity = 1 - life;
+  });
+  updateBubble(dt);
+  tapHint.hidden = !(advanceCb && !bubble.open);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- Claude ---------- */
+let sample = null;
+if (window.claude && typeof window.claude.use === "function") window.claude.use("sample").then((s) => { sample = s; });
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const sideName = (side) => side === "for" ? "FOR" : "AGAINST";
-const exLabel = (side, i) => side === "for" ? "Exhibit " + (i + 1) : "Exhibit " + String.fromCharCode(65 + i);
+const STAGES = [
+  { side: "for", title: "Opening for the idea", ask: "your opening statement. Say why this idea should go forward." },
+  { side: "against", title: "Opening against the idea", ask: "your opening statement. Say why this idea should not go forward, and answer what opposing counsel just said." },
+  { side: "for", title: "Closing for the idea", ask: "your closing argument. Hit back at the other side's specific points and make your final case." },
+  { side: "against", title: "Closing against the idea", ask: "your closing argument. You speak last. Hit back at the other side's specific points and make your final case." }
+];
+const FATAL = new Set(["not_granted", "sampling_disabled", "session_expired", "not_declared", "capability_disabled", "cancelled"]);
 
 function researchPrompt(side, idea) {
-  return `You are counsel ${sideName(side)} the following idea in a mock trial held in the United States. The year is 2026.
+  return `You are counsel ${sideName(side)} this idea in a mock trial in the United States. The year is 2026.
 
 Idea on trial: """${idea}"""
 
-This is your research period. You can't browse the web, so work from what you actually know: real studies, data, historical precedents, places that have tried something similar, expert consensus, economics, and practical reasoning. Do not invent statistics, studies, quotes or sources. If you're unsure of an exact number, say "roughly" or leave it out. Rate how solid each item is honestly.
+Research period. You can't browse the web, so work from what you actually know: real studies, data, precedents, places that tried something similar, expert consensus, economics, practical reasoning. Do not invent statistics, studies, quotes or sources. If you're unsure of a number, say "roughly" or leave it out.
 
-Reply with only JSON in this shape:
-{"theory":"one sentence, the core of your case","exhibits":[{"title":"short name, max 8 words","detail":"1-2 sentences of the evidence or reasoning","confidence":"solid" or "likely" or "shaky"}],"expected_attack":"one sentence: the other side's best attack and how you'll answer it"}
-
-Give 4 to 6 exhibits, strongest first.`;
+Reply with only JSON: {"theory":"one sentence, the core of your case","points":["4 to 6 strong points, each 1-2 sentences, strongest first"]}`;
 }
-
-function fileText(side, r) {
-  return `Theory: ${r.theory}\n` + r.exhibits.map((x, i) => `${exLabel(side, i)} (${x.confidence}): ${x.title}. ${x.detail}`).join("\n");
+function cleanResearch(r) {
+  if (!r || typeof r.theory !== "string" || !Array.isArray(r.points) || !r.points.length) throw { code: "invalid_json" };
+  return { theory: r.theory, points: r.points.slice(0, 6).map(String) };
 }
-
-function recordText(upTo) {
-  const speeches = trial.speeches.slice(0, upTo).filter((s) => s.text);
-  if (!speeches.length) return "(nothing yet, you speak first)";
-  return speeches.map((s) => `${s.title}:\n${s.text}`).join("\n\n");
+const fileText = (r) => `Theory: ${r.theory}\n- ${r.points.join("\n- ")}`;
+function recordText(P, upTo) {
+  const s = STAGES.slice(0, upTo).map((st, i) => `${st.title}:\n${P.speeches[i].text}`);
+  return s.length ? s.join("\n\n") : "(nothing yet, you speak first)";
 }
+function argPrompt(P, st, i) {
+  return `Mock trial, United States, 2026. You are counsel ${sideName(st.side)} this idea: """${P.idea}"""
 
-const STAGES = [
-  { side: "for", title: "Opening for the idea", ask: "your opening statement. Lay out why this idea should go forward." },
-  { side: "against", title: "Opening against the idea", ask: "your opening statement. Lay out why this idea should not go forward, and answer what opposing counsel just said." },
-  { side: "for", title: "Closing for the idea", ask: "your closing argument. Rebut the other side's specific points and make your final case." },
-  { side: "against", title: "Closing against the idea", ask: "your closing argument. You speak last. Rebut the other side's specific points and make your final case." }
-];
+Your research:
+${fileText(P.research[st.side])}
 
-function argPrompt(stage, i) {
-  const r = trial.research[stage.side];
-  return `Mock trial, United States, 2026. You are counsel ${sideName(stage.side)} this idea: """${trial.idea}"""
+What's been said so far:
+${recordText(P, i)}
 
-Your research file:
-${fileText(stage.side, r)}
+Now give ${st.ask}
 
-Court record so far:
-${recordText(i)}
-
-Now deliver ${stage.ask}
-
-Speak directly to the jury in plain spoken English, like a sharp trial lawyer talking, not an essay. Cite your exhibits by label when you use them. Don't bring in facts that aren't in your research file. 150 to 220 words. No headings, bullet points, or stage directions. Start speaking right away.`;
+This is spoken out loud in a speech bubble in a courtroom video game, so keep it punchy: 60 to 90 words, plain spoken English, like a sharp lawyer talking to a jury. Don't bring in facts beyond your research. No headings, lists, stage directions, or quotation marks around the whole thing. Start talking right away.`;
 }
-
-function fullRecord() {
-  return `EXHIBITS FOR THE IDEA:\n${fileText("for", trial.research.for)}\n\nEXHIBITS AGAINST THE IDEA:\n${fileText("against", trial.research.against)}\n\nTRANSCRIPT:\n${recordText(4)}`;
-}
-
-function jurorPrompt(j, i) {
+const fullRecord = (P) => `RESEARCH FOR:\n${fileText(P.research.for)}\n\nRESEARCH AGAINST:\n${fileText(P.research.against)}\n\nTRANSCRIPT:\n${recordText(P, 4)}`;
+function jurorPrompt(P, j, i) {
   return `You are Juror No. ${i + 1} in a mock trial in the United States.
 
 Who you are: ${j.name}, ${j.age}, ${j.job}. ${j.voice}
 
-The idea on trial: """${trial.idea}"""
+The idea on trial: """${P.idea}"""
 
-Here is everything presented in court:
-${fullRecord()}
+Everything presented in court:
+${fullRecord(P)}
 
-You are voting by secret ballot. You have not talked to the other jurors and you can't see how anyone else voted. Decide for yourself, as the person described above, based on what was argued. Vote YAY if you think the idea should go forward, NAY if not. Your personality should shape what you care about, but follow the arguments where they lead.
+Secret ballot. You haven't talked to the other jurors and can't see their votes. Decide for yourself, as the person described, based on what was argued. YAY means the idea should go forward, NAY means it shouldn't. Your personality shapes what you care about, but follow the arguments.
 
-Reply with only JSON: {"vote":"YAY" or "NAY","reason":"2 or 3 sentences in your own voice, first person, explaining your vote"}`;
+Reply with only JSON: {"vote":"YAY" or "NAY","reason":"one or two sentences in your own voice"}`;
 }
+function judgePrompt(P) {
+  const R = P.ruling;
+  const lines = P.votes.map((v, i) => v ? `${JURORS[i].name} (${JURORS[i].job}): ${v.vote}. "${v.reason}"` : `${JURORS[i].name}: excused`).join("\n");
+  return `You are the judge in a mock trial in the United States, speaking out loud from the bench in a courtroom video game.
 
-function judgePrompt(ruling) {
-  const lines = trial.votes.map((v, i) => v ? `Juror ${i + 1} (${JURORS[i].name}, ${JURORS[i].job}): ${v.vote}. "${v.reason}"` : `Juror ${i + 1}: excused, no vote`).join("\n");
-  return `You are the presiding judge of a mock trial in the United States.
+The idea on trial: """${P.idea}"""
 
-The idea on trial: """${trial.idea}"""
+Record:
+${fullRecord(P)}
 
-Full record:
-${fullRecord()}
-
-The jury voted by secret ballot: ${ruling.y} YAY, ${ruling.n} NAY.
-Juror statements:
+Secret ballot: ${R.y} YAY, ${R.n} NAY.
 ${lines}
 
-Result: ${ruling.text} You must announce this result and can't overturn it.${ruling.kind === "hung" ? " Because the jury is split evenly, also give your own non-binding view of which side argued better." : ""}
+Result: ${R.text} You must announce this result and can't overturn it.${R.kind === "hung" ? " Since the jury split evenly, also give your own non-binding view of who argued better." : ""}
 
-Write your verdict in plain, direct language with a little courtroom flavor, no heavy legalese. Reply with only JSON:
-{"headline":"the verdict in one short sentence","opinion":"two short paragraphs separated by a blank line: why the jury landed here, which arguments carried, what was weak on each side","best_for":"the strongest point made for the idea, one sentence","best_against":"the strongest point made against it, one sentence","advice":"one or two sentences of practical advice for the person who filed this idea"}`;
+Deliver the verdict out loud in 3 or 4 sentences, at most 85 words: announce the result with the vote count, say which argument carried it, and give the person who filed the idea one piece of practical advice. Plain spoken with a little courtroom flavor. No headings or lists. Start speaking right away.`;
 }
 
-/* Rendering */
-function renderBrief(side, r) {
-  const box = side === "for" ? $("#briefFor") : $("#briefAgainst");
-  box.replaceChildren(el("div", "side-tag", side === "for" ? "Counsel for the idea" : "Counsel against the idea"));
-  if (!r) return;
-  if (r.pending) { box.append(el("p", "empty", r.pending)); return; }
-  box.append(el("p", "theory", r.theory));
-  const ul = el("ul", "exhibits");
-  r.exhibits.forEach((x, i) => {
-    const li = el("li", "exhibit");
-    li.append(el("span", "tag", exLabel(side, i)));
-    const body = el("div");
-    body.append(el("b", null, x.title + ". "), document.createTextNode(x.detail + " "));
-    body.append(el("span", "conf " + x.confidence, "[" + x.confidence + "]"));
-    li.append(body);
-    ul.append(li);
-  });
-  box.append(ul);
-  if (r.expected_attack) box.append(el("p", "attack", "Expects: " + r.expected_attack));
-}
-
-function renderTranscriptShell() {
-  const t = $("#transcript");
-  t.replaceChildren();
-  STAGES.forEach((s, i) => {
-    const row = el("div", "speech " + s.side);
-    const sp = el("div", "speaker");
-    sp.append(el("span", "who", s.side === "for" ? "Counsel for" : "Counsel against"), el("span", "label", s.title.split(" ")[0]));
-    const w = el("div", "words waiting", "Waiting to speak");
-    w.id = "speech" + i;
-    row.append(sp, w);
-    t.append(row);
-  });
-}
-
-function updateTally(revealed) {
-  const y = revealed.filter((v) => v && v.vote === "YAY").length;
-  const n = revealed.filter((v) => v && v.vote === "NAY").length;
-  $("#barY").style.width = (y / 12 * 100) + "%";
-  $("#barN").style.width = (n / 12 * 100) + "%";
-  $("#numY").textContent = "YAY " + y;
-  $("#numN").textContent = "NAY " + n;
-}
-
-function setStatus(id, text) { $(id).textContent = text; }
-
-/* Trial */
-function cleanResearch(r) {
-  if (!r || typeof r.theory !== "string" || !Array.isArray(r.exhibits) || !r.exhibits.length) throw { code: "invalid_json" };
-  return {
-    theory: r.theory,
-    expected_attack: typeof r.expected_attack === "string" ? r.expected_attack : "",
-    exhibits: r.exhibits.slice(0, 6).map((x) => ({
-      title: String(x.title || "Untitled"), detail: String(x.detail || ""),
-      confidence: ["solid", "likely", "shaky"].includes(x.confidence) ? x.confidence : "likely"
-    }))
-  };
-}
-
+const mkLine = (text) => ({ text: text || "", done: !!text, error: null });
 async function pool(items, limit, fn) {
   let next = 0;
-  const work = async () => { while (next < items.length) { const i = next++; await fn(items[i], i); } };
-  await Promise.all(Array.from({ length: limit }, work));
+  await Promise.all(Array.from({ length: limit }, async () => { while (next < items.length) { const i = next++; await fn(items[i], i); } }));
 }
 
-function reset(idea) {
-  trial = { idea, research: {}, speeches: STAGES.map((s) => ({ title: s.title, text: "" })), votes: Array(12).fill(null) };
-  $("#caseTitle").textContent = "In re: " + (idea.length > 90 ? idea.slice(0, 88) + "…" : idea);
-  renderBrief("for", { pending: "Researching…" });
-  renderBrief("against", { pending: "Researching…" });
-  renderTranscriptShell();
-  renderSeats();
-  document.querySelectorAll(".seat").forEach((s) => s.classList.add("enter"));
-  setTimeout(() => document.querySelectorAll(".seat.enter").forEach((s) => s.classList.remove("enter")), 1800);
-  updateTally([]);
-  $("#numY").textContent = "YAY —"; $("#numN").textContent = "NAY —";
-  $("#sealCount").textContent = "0 of 12 ballots in";
-  $("#verdictBox").replaceChildren(el("p", "empty", "The judge reads the record and the jury's ballots, then rules."));
-  ["#stArgs", "#stJury", "#stVerdict"].forEach((id, i) => setStatus(id, ["Not started", "Seated", "Pending"][i]));
+function startPipeline(idea, signal) {
+  const P = { idea, research: {}, speeches: STAGES.map(() => mkLine()), votes: Array(12).fill(null), voted: Array(12).fill(false), verdict: mkLine(), fatal: null };
+  const fail = (e) => { if (!P.fatal) P.fatal = e || { code: "upstream_error" }; throw P.fatal; };
+  const runLine = (line, prompt) => sample(prompt, { signal, cache: false, onText: ({ text }) => { line.text = text; } })
+    .then((r) => { line.text = r.text.trim(); line.done = true; });
+  P.researchP = Promise.all(["for", "against"].map((side) =>
+    sample.json(researchPrompt(side, idea), { signal, cache: false }).then((r) => { P.research[side] = cleanResearch(r); })
+  )).catch(fail);
+  let chain = P.researchP;
+  STAGES.forEach((st, i) => { chain = chain.then(() => runLine(P.speeches[i], argPrompt(P, st, i)).catch(fail)); });
+  P.votesP = chain.then(() => pool(JURORS, 3, async (j, i) => {
+    try {
+      const v = await sample.json(jurorPrompt(P, j, i), { signal, cache: false });
+      const vote = String((v && v.vote) || "").toUpperCase();
+      if (vote === "YAY" || vote === "NAY") P.votes[i] = { vote, reason: String(v.reason || "") };
+    } catch (e) {
+      if (e && FATAL.has(e.code)) fail(e);
+    }
+    P.voted[i] = true;
+    if (phase === "jury") setMode(jurors[i], P.votes[i] ? "sealed" : "idle");
+  })).then(() => {
+    const y = P.votes.filter((v) => v && v.vote === "YAY").length, n = P.votes.filter((v) => v && v.vote === "NAY").length;
+    if (!y && !n) fail({ code: "upstream_error" });
+    P.ruling = y > n ? { kind: "yay", y, n, text: `The jury voted ${y} to ${n} in favor. The idea is upheld.` }
+      : n > y ? { kind: "nay", y, n, text: `The jury voted ${n} to ${y} against. The idea is rejected.` }
+      : { kind: "hung", y, n, text: `The jury split ${y} to ${n}. It's a hung jury.` };
+  });
+  P.verdictP = P.votesP.then(() => runLine(P.verdict, judgePrompt(P)).catch(fail));
+  [P.researchP, P.votesP, P.verdictP].forEach((p) => p.catch(() => {}));
+  return P;
 }
 
-async function runTrial(idea) {
-  running = true;
-  ctl = new AbortController();
-  const signal = ctl.signal;
-  $("#fileBtn").disabled = true; ideaBox.disabled = true; $("#stopBtn").hidden = false;
-  notice("");
-  reset(idea);
+/* ---------- Director ---------- */
+let trialId = 0, ctl = null, phase = "home";
+const dock = document.getElementById("dock"), ideaBox = document.getElementById("idea"), quitBtn = document.getElementById("quit");
+try { const d = localStorage.getItem("court-idea"); if (d) ideaBox.value = d; } catch (e) {}
+ideaBox.addEventListener("input", () => { try { localStorage.setItem("court-idea", ideaBox.value); } catch (e) {} });
 
-  try {
-    // I. Research, both sides at once, neither sees the other's file
-    setStep("research"); setStatus("#stResearch", "In progress");
-    await Promise.all(["for", "against"].map(async (side) => {
-      const raw = await sample.json(researchPrompt(side, idea), { signal, cache: false });
-      trial.research[side] = cleanResearch(raw);
-      renderBrief(side, trial.research[side]);
-    }));
-    setStatus("#stResearch", "Filed");
-
-    // II. Arguments, in order, each side hears the last
-    setStep("args"); setStatus("#stArgs", "In session");
-    for (let i = 0; i < STAGES.length; i++) {
-      const w = $("#speech" + i);
-      w.textContent = "Preparing…";
-      look(STAGES[i].side);
-      const { text } = await sample(argPrompt(STAGES[i], i), {
-        signal, cache: false,
-        onText: ({ text }) => { w.classList.remove("waiting"); w.textContent = text; }
-      });
-      trial.speeches[i].text = text.trim();
-      w.classList.remove("waiting"); w.textContent = trial.speeches[i].text;
-    }
-    setStatus("#stArgs", "Rested");
-    look(null);
-
-    // III. Jury, each juror alone, ballots stay sealed until all are in
-    setStep("jury"); setStatus("#stJury", "Deliberating");
-    let sealed = 0;
-    await pool(JURORS, 3, async (j, i) => {
-      if (signal.aborted) return;
-      const b = $("#ballot" + i);
-      b.textContent = "Deliberating";
-      mood(i, "think");
-      try {
-        const v = await sample.json(jurorPrompt(j, i), { signal, cache: false });
-        const vote = String(v && v.vote || "").toUpperCase();
-        if (vote !== "YAY" && vote !== "NAY") throw { code: "invalid_json" };
-        trial.votes[i] = { vote, reason: String(v.reason || "") };
-        b.textContent = "Ballot sealed"; b.className = "ballot sealed";
-        mood(i, "sealed");
-      } catch (e) {
-        if (e && (e.code === "cancelled" || FATAL.has(e.code))) throw e;
-        b.textContent = "Excused";
-        mood(i, "excused");
-      }
-      sealed++;
-      $("#sealCount").textContent = sealed + " of 12 ballots in";
-    });
-
-    setStep("unseal"); setStatus("#stJury", "Unsealing");
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const shown = [];
-    for (let i = 0; i < 12; i++) {
-      const v = trial.votes[i];
-      shown.push(v);
-      if (v) {
-        const b = $("#ballot" + i);
-        b.textContent = v.vote; b.className = "ballot " + v.vote.toLowerCase();
-        mood(i, v.vote.toLowerCase());
-        $("#seat" + i).append(el("p", "reason", v.reason));
-      }
-      updateTally(shown);
-      if (!reduce) await new Promise((r) => setTimeout(r, 380));
-      if (signal.aborted) throw { code: "cancelled" };
-    }
-    const y = trial.votes.filter((v) => v && v.vote === "YAY").length;
-    const n = trial.votes.filter((v) => v && v.vote === "NAY").length;
-    if (y + n === 0) throw { code: "upstream_error" };
-    setStatus("#stJury", y + "–" + n);
-    const ruling = y > n ? { kind: "yay", text: `The jury voted ${y} to ${n} in favor. The idea is upheld.` }
-      : n > y ? { kind: "nay", text: `The jury voted ${n} to ${y} against. The idea is rejected.` }
-      : { kind: "hung", text: `The jury split ${y} to ${n}. It is a hung jury.` };
-    ruling.y = y; ruling.n = n;
-
-    // IV. Verdict
-    setStep("verdict"); setStatus("#stVerdict", "Judge writing");
-    look("up");
-    $("#verdictBox").replaceChildren(el("p", "empty", "The judge is writing the verdict…"));
-    const v = await sample.json(judgePrompt(ruling), { signal, cache: false });
-    renderVerdict(ruling, v);
-    setStatus("#stVerdict", "Entered");
-    setStep("done");
-  } catch (e) {
-    look(null);
-    document.querySelectorAll(".seat.think").forEach((s) => s.classList.remove("think"));
-    if (e && e.code === "cancelled") notice("Court adjourned. File the case again to start over.");
-    else notice(errCopy(e));
-  } finally {
-    running = false;
-    $("#fileBtn").disabled = false; ideaBox.disabled = false; $("#stopBtn").hidden = true;
-    $("#fileBtn").textContent = "File a new case";
+function errCopy(e) {
+  switch (e && e.code) {
+    case "not_granted": return "Claude wasn't allowed to run here, so I can't hold this trial. Allow it and file again.";
+    case "sampling_disabled": return "Claude isn't available on this account, so court can't be held.";
+    case "rate_limited": return "The court is swamped. Give it a minute, then file again.";
+    case "session_expired": return "Your session expired. Sign back in and refile the case.";
+    case "refused": return "I won't hear that one. Reword the idea and file again.";
+    default: return "Something went wrong with the court record. File the case again.";
   }
 }
 
-function renderVerdict(ruling, v) {
-  const box = el("article", "verdict");
-  const label = { yay: "Upheld", nay: "Rejected", hung: "Hung jury" }[ruling.kind];
-  box.append(el("div", "ruling", label + " · " + ruling.y + " yay, " + ruling.n + " nay"));
-  box.append(el("h3", null, String(v && v.headline || label)));
-  const op = el("div", "opinion");
-  String(v && v.opinion || "").split(/\n\s*\n/).filter(Boolean).forEach((p) => op.append(el("p", null, p.trim())));
-  box.append(op);
-  const f = el("div", "findings");
-  const a1 = el("div", "finding f"); a1.append(el("span", "label", "Best point for"), el("span", null, String(v && v.best_for || "")));
-  const a2 = el("div", "finding a"); a2.append(el("span", "label", "Best point against"), el("span", null, String(v && v.best_against || "")));
-  f.append(a1, a2);
-  box.append(f);
-  if (v && v.advice) { const ad = el("div", "advice"); ad.append(el("span", "label", "From the bench"), el("p", null, String(v.advice))); box.append(ad); }
-  box.append(el("p", "signed", "So ordered."));
-  $("#verdictBox").replaceChildren(box);
+function resetCourt() {
+  [counsel.for, counsel.against].forEach((c, i) => { c.walk = null; c.root.position.copy(i ? SPOT.against : SPOT.for); c.face = JUDGE_SPOT; setMode(c, "idle"); });
+  jurors.forEach((c) => { c.signOn = false; c.face = JURY_LOOK; setMode(c, "idle"); });
+  judge.face = new T.Vector3(0, 0, 5); setMode(judge, "idle");
+  researching = false;
+  closeBubble();
+  advanceCb = null;
+}
+resetCourt();
+counsel.for.root.rotation.y = counsel.against.root.rotation.y = Math.PI;
+jurors.forEach((c) => { c.root.rotation.y = -Math.PI / 2; });
+
+async function say(c, label, color, line, P) {
+  openBubble(c, label, color, line);
+  if (c !== judge) setMode(c, "talk");
+  while (!line.done) {
+    if (P && P.fatal) { if (c !== judge) setMode(c, "idle"); throw P.fatal; }
+    await wait(120);
+  }
+  await waitAdvance();
+  if (c !== judge) setMode(c, "idle");
+  closeBubble();
 }
 
-$("#filing").addEventListener("submit", (ev) => {
+function showHome() {
+  phase = "home";
+  dock.hidden = false; quitBtn.hidden = true;
+  camTo("orbit");
+}
+
+async function trial(idea) {
+  const my = ++trialId;
+  const chk = () => { if (my !== trialId) throw { code: "cancelled" }; };
+  ctl = new AbortController();
+  dock.hidden = true; quitBtn.hidden = false; ideaBox.blur();
+  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (!signTex) makeSignTex();
+  resetCourt();
+  let P = null;
+  try {
+    phase = "intro";
+    camTo("judge", 1.8);
+    if (!sample) {
+      await wait(1200);
+      await say(judge, "The Judge", "var(--judge)", mkLine("I can only hold court inside Claude. Open this page there and file your case again."));
+      return;
+    }
+    P = startPipeline(idea, ctl.signal);
+    await wait(1300); chk();
+    await bangGavel(3); chk();
+    await say(judge, "The Judge", "var(--judge)", mkLine(`Order in the court! Today's case: "${idea}" Counsel, you may begin your research.`), P); chk();
+
+    phase = "research";
+    camTo("tables", 1.6);
+    researching = true;
+    setMode(counsel.for, "research"); setMode(counsel.against, "research");
+    await P.researchP.catch(() => {}); chk();
+    if (P.fatal) throw P.fatal;
+    researching = false;
+    setMode(counsel.for, "idle"); setMode(counsel.against, "idle");
+    await wait(500); chk();
+
+    phase = "args";
+    for (let i = 0; i < STAGES.length; i++) {
+      const side = STAGES[i].side, c = counsel[side];
+      camTo("tables", 1.0);
+      jurors.forEach((j) => { j.face = c.root.position; });
+      await walkTo(c, PODIUM, 1.7); chk();
+      c.face = new T.Vector3(3, 0, 5);
+      camTo("podium", 1.2);
+      await wait(700); chk();
+      await say(c, side === "for" ? "Counsel for" : "Counsel against", side === "for" ? "var(--for)" : "var(--against)", P.speeches[i], P); chk();
+      c.face = null;
+      await walkTo(c, SPOT[side], 1.5); chk();
+      c.face = JUDGE_SPOT;
+    }
+
+    phase = "jury";
+    jurors.forEach((j) => { j.face = JURY_LOOK; });
+    camTo("judge", 1.3);
+    await say(judge, "The Judge", "var(--judge)", mkLine("Jurors, you've heard both sides. Cast your secret ballots."), P); chk();
+    camTo("jury", 1.6);
+    jurors.forEach((j, i) => setMode(j, P.voted[i] ? (P.votes[i] ? "sealed" : "idle") : "think"));
+    await P.votesP.catch(() => {}); chk();
+    if (P.fatal) throw P.fatal;
+    await wait(900); chk();
+    for (let i = 0; i < 12; i++) {
+      const v = P.votes[i], j = jurors[i];
+      if (v) { j.signFace.map = signTex[v.vote]; j.signFace.needsUpdate = true; j.signOn = true; setMode(j, v.vote.toLowerCase()); }
+      await wait(reduced ? 80 : 380); chk();
+    }
+    await waitAdvance(); chk();
+
+    phase = "verdict";
+    jurors.forEach((j) => { j.signOn = false; setMode(j, "lookup"); j.face = JUDGE_SPOT; });
+    camTo("judge", 1.6);
+    await wait(1200); chk();
+    await bangGavel(2); chk();
+    await say(judge, "The Judge", "var(--judge)", P.verdict, P); chk();
+    await bangGavel(1); chk();
+
+    camTo("wide", 2);
+    const k = P.ruling.kind;
+    setMode(counsel.for, k === "yay" ? "cheer" : k === "nay" ? "sad" : "shrug");
+    setMode(counsel.against, k === "nay" ? "cheer" : k === "yay" ? "sad" : "shrug");
+    counsel.for.face = counsel.against.face = new T.Vector3(0, 0, 12);
+    jurors.forEach((j, i) => { const v = P.votes[i]; setMode(j, !v ? "idle" : (k === "hung" ? "idle" : (v.vote.toLowerCase() === k ? "cheer" : "idle"))); j.face = JURY_LOOK; });
+    await wait(3200); chk();
+  } catch (e) {
+    if (my !== trialId || (e && e.code === "cancelled")) return;
+    researching = false;
+    camTo("judge", 1);
+    await say(judge, "The Judge", "var(--judge)", mkLine(errCopy(e))).catch(() => {});
+  } finally {
+    if (my === trialId) { if (ctl) ctl.abort(); showHome(); }
+  }
+}
+
+document.getElementById("dock").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const idea = ideaBox.value.trim();
-  if (running) return;
-  if (idea.length < 8) { notice("Describe the idea in at least a few words."); return; }
-  if (!sample) { notice("Claude isn't reachable from this view."); return; }
-  runTrial(idea);
+  if (idea.length < 4) { ideaBox.focus(); return; }
+  trial(idea);
 });
-$("#stopBtn").addEventListener("click", () => ctl && ctl.abort());
+quitBtn.addEventListener("click", () => {
+  trialId++;
+  if (ctl) ctl.abort();
+  if (advanceCb) { const cb = advanceCb; advanceCb = null; cb(); }
+  resetCourt();
+  showHome();
+});
+showHome();
 </script>
