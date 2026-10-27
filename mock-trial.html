@@ -144,6 +144,10 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 #exhibit .tag { position: absolute; top: -13px; left: 12px; color: #fff; border: 2.5px solid var(--ink); border-radius: 6px; padding: 0 10px; font-size: 12.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 #exhibit b { display: block; font-size: 16px; margin-bottom: 4px; }
 #exhibit p { margin: 0; font-size: 14px; line-height: 1.4; }
+#exhibit p { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+#exhibit.compact { width: auto; max-width: min(300px, calc(100vw - 32px)); padding: 14px 12px 8px; }
+#exhibit.compact p { display: none; }
+#exhibit.compact b { margin: 0; font-size: 14.5px; }
 
 #hist { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(680px, calc(100vw - 32px)); max-height: min(80vh, 760px); display: flex; flex-direction: column; padding: 26px 0 0; }
 #hist .who { background: var(--judge); }
@@ -2027,13 +2031,22 @@ async function until(P, test) {
 const exEl = document.getElementById("exhibit"), exTag = document.getElementById("exTag"), exTitle = document.getElementById("exTitle"), exDetail = document.getElementById("exDetail");
 let exShown = null;
 function hideExhibit() { exEl.hidden = true; exShown = null; }
-// Keep the evidence card clear of the speech bubble: try each corner, take the first that doesn't overlap.
+// Keep the evidence card clear of the speech bubble. The bubble's text always wins: try the corners,
+// then beside, above and below the bubble; if nothing fits, shrink to label and title; if that
+// still doesn't fit, step out of the way until there's room.
 function placeExhibit(bl, bt, bw, bh, W, H) {
-  const cw = exEl.offsetWidth, ch = exEl.offsetHeight, m = 16, gap = 10;
-  const spots = [[m, 74], [W - cw - m, 74], [m, H - ch - 110], [W - cw - m, H - ch - 110]];
-  const clear = ([x, y]) => x + cw + gap < bl || x > bl + bw + gap || y + ch + gap < bt || y > bt + bh + gap;
-  const [x, y] = spots.find(clear) || spots[2];
-  exEl.style.left = Math.max(m, x) + "px"; exEl.style.top = Math.max(60, y) + "px";
+  const m = 12, gap = 10, topMin = 64, bottomPad = 96;
+  const fits = ([x, y], cw, ch) => x >= m && y >= topMin && x + cw <= W - m && y + ch <= H - bottomPad;
+  const clear = ([x, y], cw, ch) => x + cw + gap <= bl || x >= bl + bw + gap || y + ch + gap <= bt || y >= bt + bh + gap;
+  const spots = (cw, ch) => [[m, topMin], [W - cw - m, topMin], [m, H - ch - bottomPad], [W - cw - m, H - ch - bottomPad],
+    [bl - cw - gap, bt], [bl + bw + gap, bt], [bl, bt - ch - gap], [bl + bw - cw, bt - ch - gap], [bl, bt + bh + gap]];
+  for (const compact of [false, true]) {
+    exEl.classList.toggle("compact", compact);
+    const cw = exEl.offsetWidth, ch = exEl.offsetHeight;
+    const spot = spots(cw, ch).find((s) => fits(s, cw, ch) && clear(s, cw, ch));
+    if (spot) { exEl.style.left = spot[0] + "px"; exEl.style.top = spot[1] + "px"; exEl.style.visibility = ""; return; }
+  }
+  exEl.style.visibility = "hidden";
 }
 function checkExhibit(text) {
   const P = currentP;
