@@ -487,7 +487,7 @@ const jurors = JURORS.map((j, i) => {
 const JURY_LOOK = new T.Vector3(0, 0, -1);
 
 let signTex = null;
-function makeSignTex(labels) {
+function makeSignTex(labels, choice) {
   const draw = (bg, word) => canvasTex(320, 160, (g, w, h) => {
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     g.strokeStyle = "rgba(0,0,0,.25)"; g.lineWidth = 10; g.strokeRect(5, 5, w - 10, h - 10);
@@ -497,7 +497,7 @@ function makeSignTex(labels) {
     g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText(word, w / 2, h / 2 + 6);
   });
-  signTex = { for: draw("#2f9e7e", labels.for), against: draw("#d1495b", labels.against) };
+  signTex = choice ? { for: draw("#3c64b4", labels.for), against: draw("#d9822b", labels.against) } : { for: draw("#2f9e7e", labels.for), against: draw("#d1495b", labels.against) };
 }
 
 /* ---------- Animation ---------- */
@@ -957,7 +957,19 @@ Reply with only JSON:
 "summary":"one or two sentences the judge reads aloud to open the case",
 "question":"the exact question the jury decides, one sentence",
 "witnesses":{"for":[{"name":"","role":"short role like 'responding officer'","knows":"1-2 sentences of what they saw or know","voice":"female" or "male" or "either" (only pick female or male if the case file makes it clear, e.g. pronouns; it only picks a speaking voice)}],"against":[same shape]} (legal only),
-"exhibits":[{"name":"short name, max 6 words","detail":"one sentence: what it is and what it shows"}] (legal only)}`;
+"exhibits":[{"name":"short name, max 6 words","detail":"one sentence: what it is and what it shows"}] (legal only),
+"choice": for an IDEA that is really a pick between two options (like "dogs or cats", "pizza vs tacos", "take job A or job B"), the two options as {"for":"first option, 1 or 2 words","against":"second option, 1 or 2 words"}; for a yes/no idea ("should we do X?") or a legal case, null}`;
+}
+function cleanChoice(c) {
+  const tidy = (x) => String(x || "").replace(/[^\p{L}\p{N} &'+-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 18);
+  if (!c || typeof c !== "object") return null;
+  const a = tidy(c.for), b = tidy(c.against);
+  return a && b && a.toUpperCase() !== b.toUpperCase() ? { for: a.charAt(0).toUpperCase() + a.slice(1), against: b.charAt(0).toUpperCase() + b.slice(1) } : null;
+}
+// Who an attorney is, in prompts
+function counselWho(P, side) {
+  const S = P.setup, me = label(P, side), them = label(P, other(side));
+  return S.legal ? `the ${me} attorney` : S.choice ? `counsel for ${me}, arguing that the jury should pick ${me} over ${them}` : `counsel ${side === "for" ? "FOR" : "AGAINST"} the idea`;
 }
 function cleanSetup(s, quick) {
   if (!s || (s.kind !== "legal" && s.kind !== "idea")) throw { code: "invalid_json" };
@@ -965,12 +977,15 @@ function cleanSetup(s, quick) {
   const W = (a) => (Array.isArray(a) ? a : []).slice(0, quick ? 1 : 2).map((w) => ({ name: String((w && w.name) || "").slice(0, 40), role: String((w && w.role) || "witness").slice(0, 60), knows: String((w && w.knows) || ""), gender: w && w.voice === "female" ? "f" : w && w.voice === "male" ? "m" : "?" })).filter((w) => w.name);
   const S = {
     legal, type, title: String(s.title || "The case").slice(0, 80), summary: String(s.summary || ""), question: String(s.question || ""),
+    choice: legal ? null : cleanChoice(s.choice),
     forLabel: legal ? (type === "civil" ? "Plaintiff" : "Prosecution") : "For", againstLabel: legal ? "Defense" : "Against",
     witnesses: legal ? { for: W(s.witnesses && s.witnesses.for), against: W(s.witnesses && s.witnesses.against) } : { for: [], against: [] },
     exhibits: legal ? (Array.isArray(s.exhibits) ? s.exhibits : []).slice(0, 6).map((x, i) => ({ label: `Exhibit ${i + 1}`, title: String((x && x.name) || "Exhibit").slice(0, 60), detail: String((x && x.detail) || "").slice(0, 300) })) : []
   };
   S.burden = !legal ? "" : type === "criminal" ? "beyond a reasonable doubt" : "by a preponderance of the evidence, meaning more likely true than not";
   S.votes = !legal ? { for: "YAY", against: "NAY" } : type === "criminal" ? { for: "GUILTY", against: "NOT GUILTY" } : { for: "LIABLE", against: "NOT LIABLE" };
+  // a this-or-that question: each side is one of the options, and the signs name them
+  if (S.choice) { S.forLabel = S.choice.for; S.againstLabel = S.choice.against; S.votes = { for: S.choice.for.toUpperCase(), against: S.choice.against.toUpperCase() }; }
   let k = 0;
   ["for", "against"].forEach((side) => S.witnesses[side].forEach((w, i) => { w.idx = k++; w.side = side; w.slot = i; }));
   return S;
@@ -986,10 +1001,11 @@ function buildBeats(P) {
   const B = [], sp = (side, title, ask, words) => B.push({ kind: "speech", side, title, ask, words, line: mkLine() });
   if (!S.legal) {
     const w = q ? "60 to 100" : "120 to 200";
-    sp("for", "Opening for the idea", "your opening statement. Say why this idea should go forward.", w);
-    sp("against", "Opening against the idea", "your opening statement. Say why this idea should not go forward, and answer what opposing counsel just said.", w);
-    sp("for", "Closing for the idea", "your closing argument. Hit back at the other side's specific points and make your final case.", w);
-    sp("against", "Closing against the idea", "your closing argument. You speak last. Hit back at the other side's specific points and make your final case.", w);
+    const A = S.forLabel, Bn = S.againstLabel, ch = !!S.choice;
+    sp("for", ch ? `Opening for ${A}` : "Opening for the idea", ch ? `your opening statement. Make the case for picking ${A} over ${Bn}.` : "your opening statement. Say why this idea should go forward.", w);
+    sp("against", ch ? `Opening for ${Bn}` : "Opening against the idea", ch ? `your opening statement. Make the case for picking ${Bn} over ${A}, and answer what opposing counsel just said.` : "your opening statement. Say why this idea should not go forward, and answer what opposing counsel just said.", w);
+    sp("for", ch ? `Closing for ${A}` : "Closing for the idea", "your closing argument. Hit back at the other side's specific points and make your final case.", w);
+    sp("against", ch ? `Closing for ${Bn}` : "Closing against the idea", "your closing argument. You speak last. Hit back at the other side's specific points and make your final case.", w);
   } else {
     sp("for", "Opening statement", "your opening statement. Tell the jury what the evidence will show and what you'll ask them to decide.", q ? "80 to 130" : "150 to 250");
     sp("against", "Opening statement", `your opening statement. Tell the jury the defense's side and why the ${S.forLabel.toLowerCase()} won't meet its burden of proof.`, q ? "80 to 130" : "150 to 250");
@@ -1016,7 +1032,7 @@ function openingText(S) {
 
 function researchPrompt(P, side) {
   const S = P.setup;
-  const who = S.legal ? `the ${label(P, side)} attorney` : `counsel ${side === "for" ? "FOR" : "AGAINST"} the idea`;
+  const who = counselWho(P, side);
   const task = S.legal
     ? "Trial preparation. Using the case file, lay out your theory of the case, the facts and evidence that help you, the other side's weak points, and what you need from each witness. Stick to the case file. Don't invent evidence."
     : "Research period. You can't browse the web, so work from what you actually know: real studies, data, precedents, places that tried something similar, expert consensus, economics, practical reasoning. Do not invent statistics, studies, quotes or sources. If you're unsure of a number, say \"roughly\" or leave it out.";
@@ -1081,7 +1097,7 @@ function recordText(P, upTo, extraTurns) {
 }
 function speechPrompt(P, b, i) {
   const S = P.setup;
-  const who = S.legal ? `the ${label(P, b.side)} attorney` : `counsel ${b.side === "for" ? "FOR" : "AGAINST"} the idea`;
+  const who = counselWho(P, b.side);
   return `${header(P)}
 
 You are ${who}.
@@ -1173,7 +1189,7 @@ function jurorEvidence(P) {
   const S = P.setup;
   return S.legal
     ? `Everything presented at trial (you only know what was said in court):${exhibitText(P)}\n\n${recordText(P, P.beats.length)}\n\nThe judge's instructions: the ${S.forLabel.toLowerCase()} must prove its case ${S.burden}. Vote ${S.votes.for} only if it did; otherwise vote ${S.votes.against}.`
-    : `The idea as filed:\n"""${P.file}"""\n\nResearch each side brought:\nFOR:\n${fileText(P, "for")}\nAGAINST:\n${fileText(P, "against")}\n\nTranscript:\n${recordText(P, P.beats.length)}\n\nVote YAY if the idea should go forward, NAY if not.`;
+    : `The idea as filed:\n"""${P.file}"""\n\nResearch each side brought:\n${S.forLabel.toUpperCase()}:\n${fileText(P, "for")}\n${S.againstLabel.toUpperCase()}:\n${fileText(P, "against")}\n\nTranscript:\n${recordText(P, P.beats.length)}\n\n${S.choice ? `Vote ${S.votes.for} if you pick ${S.forLabel}, ${S.votes.against} if you pick ${S.againstLabel}.` : "Vote YAY if the idea should go forward, NAY if not."}`;
 }
 function jurorPrompt(P, j, i) {
   const S = P.setup;
@@ -1234,6 +1250,7 @@ Deliver the verdict out loud in 4 to ${coach ? 7 : 6} sentences, at most ${coach
 function computeRuling(P) {
   const S = P.setup, f = P.votes.filter((v) => v && v.side === "for").length, a = P.votes.filter((v) => v && v.side === "against").length, n = f + a;
   const out = (kind, text) => ({ kind, f, a, text });
+  if (S.choice) return f > a ? out("for", `The jury picked ${S.forLabel}, ${f} to ${a}.`) : a > f ? out("against", `The jury picked ${S.againstLabel}, ${a} to ${f}.`) : out("hung", `The jury split ${f} to ${a} between ${S.forLabel} and ${S.againstLabel}. It's a hung jury.`);
   if (!S.legal) return f > a ? out("for", `The jury voted ${f} to ${a} in favor. The idea is upheld.`) : a > f ? out("against", `The jury voted ${a} to ${f} against. The idea is rejected.`) : out("hung", `The jury split ${f} to ${a}. It's a hung jury.`);
   if (S.type === "criminal") {
     if (f === n) return out("for", `The jury unanimously found the defendant guilty, ${f} to 0.`);
@@ -1303,12 +1320,13 @@ function jurorIdx(P, name) {
 }
 function parseVoteS(P, v) {
   const raw = String((v && v.vote) || "").toUpperCase().trim();
-  return raw === P.setup.votes.for ? "for" : raw === P.setup.votes.against ? "against" : null;
+  const norm = (x) => String(x).toUpperCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return norm(raw) === norm(P.setup.votes.for) ? "for" : norm(raw) === norm(P.setup.votes.against) ? "against" : null;
 }
 function decisionRuling(P) {
   const S = P.setup, d = P.decision;
   const f = P.votes.filter((v) => v && v.side === "for").length, a = P.votes.filter((v) => v && v.side === "against").length;
-  const outcome = S.legal ? S.votes[d.side] : d.side === "for" ? "the idea is upheld" : "the idea is rejected";
+  const outcome = S.legal ? S.votes[d.side] : S.choice ? `the pick is ${d.side === "for" ? S.forLabel : S.againstLabel}` : d.side === "for" ? "the idea is upheld" : "the idea is rejected";
   return { kind: d.side, f, a, decided: true, text: `The twelve jurors advised ${f} ${S.votes.for} to ${a} ${S.votes.against}, but the final verdict belongs to the human deciding this case, and they ruled: ${outcome}.${d.reason ? ` Their reason: "${d.reason}"` : ""}` };
 }
 // The other eleven jurors talk, responding to the human in seat 12.
@@ -1501,7 +1519,7 @@ async function shareRecord(rec) {
 function verdictChip(rec) {
   const R = rec.ruling, S = rec.setup;
   if (!R) return { text: "Unfinished", kind: "hung" };
-  const word = R.kind === "hung" ? "Hung jury" : S.legal ? S.votes[R.kind] : R.kind === "for" ? "Upheld" : "Rejected";
+  const word = R.kind === "hung" ? "Hung jury" : S.legal ? S.votes[R.kind] : S.choice ? `Picked ${R.kind === "for" ? S.forLabel : S.againstLabel}` : R.kind === "for" ? "Upheld" : "Rejected";
   return { text: R.decided ? `${word} · your call` : `${word} · ${R.f}–${R.a}`, kind: R.kind };
 }
 function transcriptText(rec) {
@@ -1743,11 +1761,11 @@ function reversalPrompt(P, winner) {
 
 Someone who disagreed just blew up the entire courtroom (cartoon explosion, nobody hurt). You climb out of the rubble and stand on the broken remains of your bench, covered in soot, hair smoking, holding half a gavel.
 
-Dazed but trying to stay dignified, announce that after an unexpected change of perspective the court is reversing itself: the ${label(P, winner)} wins${S.legal ? `, and the verdict is now ${S.votes[winner]}` : ""}. 2 or 3 short sentences, at most 55 words. Funny, a cough or two is fine, keep it PG. Start speaking right away.`;
+Dazed but trying to stay dignified, announce that after an unexpected change of perspective the court is reversing itself: ${S.choice ? `the court now picks ${label(P, winner)}` : `the ${label(P, winner)} wins`}${S.legal ? `, and the verdict is now ${S.votes[winner]}` : ""}. 2 or 3 short sentences, at most 55 words. Funny, a cough or two is fine, keep it PG. Start speaking right away.`;
 }
 function reversalFallback(P, winner) {
   const S = P.setup;
-  return `*cough* ...Well. That was an unexpected change of perspective. Upon further... reflection, the court reverses itself. ${S.legal ? `The verdict is now ${S.votes[winner].toLowerCase()}.` : ""} The ${label(P, winner)} wins. Nobody touch anything.`;
+  return `*cough* ...Well. That was an unexpected change of perspective. Upon further... reflection, the court reverses itself. ${S.legal ? `The verdict is now ${S.votes[winner].toLowerCase()}.` : ""} ${S.choice ? `The court now picks ${label(P, winner)}.` : `The ${label(P, winner)} wins.`} Nobody touch anything.`;
 }
 
 async function aftermath(P, chk, line, winner) {
@@ -2510,11 +2528,11 @@ async function trial(file, replayRec) {
     P = replayRec ? fromRecord(replayRec, ctl.signal) : startPipeline(file, ctl.signal, settings);
     currentP = P;
     youMark.visible = P.role === "juror";
-    if (P.replay) { spawnWitnesses(P.setup); makeSignTex(P.setup.votes); placeDefendant(P.setup); }
+    if (P.replay) { spawnWitnesses(P.setup); makeSignTex(P.setup.votes, !!P.setup.choice); placeDefendant(P.setup); }
     try {
     await wait(1300); chk();
     await bangGavel(3); chk();
-    if (!P.replay) P.setupP.then(() => { if (my === trialId) { spawnWitnesses(P.setup); makeSignTex(P.setup.votes); placeDefendant(P.setup); } }).catch(() => {});
+    if (!P.replay) P.setupP.then(() => { if (my === trialId) { spawnWitnesses(P.setup); makeSignTex(P.setup.votes, !!P.setup.choice); placeDefendant(P.setup); } }).catch(() => {});
     await say(judge, "The Judge", COLOR.judge, P.opening, P); chk();
 
     phase = "research";
