@@ -189,7 +189,7 @@ let view = { name: 'home' };
 let timerId = null;
 let keyHandler = null;
 
-const saveSets = s => { store(LS_SETS, sets); if (s) persist(s); };
+const saveSets = s => { if (s) s.updated = Date.now(); store(LS_SETS, sets); if (s) persist(s); };
 const getSet = id => sets.find(s => s.id === id);
 
 function go(v) { view = v; render(); window.scrollTo(0, 0); }
@@ -208,9 +208,20 @@ $('#home').onclick = () => go({ name: 'home' });
 // Sets live in this viewer's private database rows when the page runs on claude.ai,
 // with a copy in browser storage so the page opens instantly.
 let db = null, me = null, sample = null, sampleCaps = null, downloads = null;
+// synced: id -> `updated` stamp the account has confirmed. deleted: ids removed here but not yet on the account.
+let synced = load('studyhall.synced', {}), deleted = load('studyhall.deleted', []);
 const pending = {}, running = {};
+let failed = false;
 const setsPath = () => `data/users/${me}/sets`;
+function saveStatus() {
+  const el = $('#saveNote'); if (!el) return;
+  const busy = Object.keys(running).length > 0;
+  if (!db) { el.textContent = 'Saved on this device'; return; }
+  if (failed && !busy) { el.innerHTML = 'Not saved to your account. <button class="btn sm" id="retrySave">Retry</button>'; $('#retrySave').onclick = syncAll; return; }
+  el.textContent = busy ? 'Saving...' : 'All changes saved';
+}
 function persist(s, del = false) {
+  if (del) { if (!deleted.includes(s.id)) deleted.push(s.id); store('studyhall.deleted', deleted); }
   if (!db) return;
   const body = del ? null : JSON.parse(JSON.stringify(s));
   if (body) delete body.id;
@@ -221,34 +232,54 @@ function persist(s, del = false) {
       const { body } = pending[s.id]; delete pending[s.id];
       try {
         const ref = db.doc(`${setsPath()}/${s.id}`);
-        body ? await ref.set(body) : await ref.delete();
+        if (body) { await ref.set(body); synced[s.id] = body.updated; }
+        else { await ref.delete(); delete synced[s.id]; deleted = deleted.filter(x => x !== s.id); store('studyhall.deleted', deleted); }
+        store('studyhall.synced', synced);
       } catch (e) {
-        toast(e?.code === 'quota_exceeded' ? 'Storage is full. Delete a set you no longer need.' : 'Could not save to your account. Your changes are kept in this browser.');
+        failed = true;
+        toast(e?.code === 'quota_exceeded' ? 'Your study storage is full. Delete a set you no longer need.' : 'Could not save to your account. Your work is kept on this device. Tap Retry at the top.');
       }
     }
     delete running[s.id];
+    saveStatus();
   })();
+  saveStatus();
+}
+// Push everything the account doesn't have yet: unsynced or newer sets, and pending deletes.
+function syncAll() {
+  failed = false;
+  sets.forEach(s => { if (synced[s.id] !== s.updated) persist(s); });
+  deleted.forEach(id => persist({ id }, true));
+  saveStatus();
 }
 async function initClaude() {
   const use = n => window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null);
-  [sample, downloads] = await Promise.all([use('sample'), use('downloads')]);
+  const [d, u, smp, dl] = await Promise.all([use('db'), use('user'), use('sample'), use('downloads')]);
+  sample = smp; downloads = dl;
   if (sample) sampleCaps = await sample.limits().catch(() => null);
-  const [d, u] = await Promise.all([use('db'), use('user')]);
   const id = u ? await u.id().catch(() => null) : null;
   if (d && id) {
     try {
       const snap = await d.collection(`data/users/${id}/sets`).get();
       db = d; me = id;
-      if (snap.empty) sets.forEach(s => persist(s));
-      else {
-        sets = snap.docs.map(x => normalizeSet({ ...x.data(), id: x.id })).sort((a, b) => b.created - a.created);
-        store(LS_SETS, sets);
+      // Merge instead of replacing, so nothing made on this device before loading finished is lost.
+      const remote = new Map(snap.docs.map(x => [x.id, normalizeSet({ ...x.data(), id: x.id })]));
+      const merged = [];
+      for (const s of sets) {
+        const r = remote.get(s.id);
+        if (r) { synced[s.id] = r.updated; merged.push(r.updated >= (s.updated || 0) ? r : s); remote.delete(s.id); }
+        else if (!(s.id in synced)) merged.push(s);          // never reached the account: keep and upload
+        else delete synced[s.id];                            // deleted on another device
       }
-      $('#saveNote').textContent = 'Saved to your account';
-    } catch { $('#saveNote').textContent = 'Saved in this browser'; }
-  } else $('#saveNote').textContent = 'Saved in this browser';
+      for (const r of remote.values()) if (!deleted.includes(r.id)) { synced[r.id] = r.updated; merged.push(r); }
+      sets = merged.sort((a, b) => b.created - a.created);
+      store(LS_SETS, sets); store('studyhall.synced', synced);
+      syncAll();
+    } catch { db = null; }
+  }
+  saveStatus();
   if (view.name === 'create') refreshCreate();
-  else if (view.name === 'home' || (view.name === 'set' && !getSet(view.id))) render();
+  else if (view.name === 'home' || view.name === 'set') render();
 }
 
 function ask(msg, ok = 'OK', danger = false) {
@@ -537,7 +568,7 @@ function normalizeSet(d) {
   const questions = (Array.isArray(d.questions) ? d.questions : []).map(normQuestion).filter(Boolean);
   const tests = (Array.isArray(d.tests) ? d.tests : []).filter(t => t && typeof t.score === 'number').slice(-20);
   return { id: d.id, title: str(d.title) || 'Untitled set', cards, categories, questions, tests, catS: typeof d.catS === 'number' ? d.catS : null,
-    bestMatch: d.bestMatch || null, created: d.created || Date.now() };
+    bestMatch: d.bestMatch || null, created: d.created || Date.now(), updated: d.updated || d.created || 0 };
 }
 
 function normQuestion(q) {
@@ -610,7 +641,7 @@ function renderSet() {
   };
   $('#del').onclick = async () => {
     if (!await ask(`Delete "${set.title}"? This can't be undone.`, 'Delete', true)) return;
-    sets = sets.filter(s => s !== set); saveSets(set); persist(set, true); go({ name: 'home' });
+    sets = sets.filter(s => s !== set); store(LS_SETS, sets); persist(set, true); go({ name: 'home' });
   };
   ({ cards: paneCards, test: paneTest, match: paneMatch, cats: paneCats, edit: paneEdit })[view.tab]($('#pane'), set);
 }
