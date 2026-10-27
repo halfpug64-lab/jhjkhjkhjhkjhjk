@@ -57,7 +57,7 @@
   .btn.good { color: var(--good); border-color: var(--good); }
   .btn.bad { color: var(--bad); border-color: var(--bad); }
   .btn.sm { padding: 5px 10px; font-size: .85rem; }
-  input[type=text], input[type=password], input[type=number], textarea, select {
+  input[type=text], input[type=password], input[type=number], input[type=date], textarea, select {
     width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit;
   }
   textarea { resize: vertical; }
@@ -137,8 +137,32 @@
   .bucket .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
   /* edit */
-  .cardrow { display: grid; grid-template-columns: 28px 1fr 1fr auto; gap: 8px; align-items: start; margin-bottom: 8px; }
-  .cardrow .num { color: var(--muted); padding-top: 10px; font-size: .85rem; text-align: right; }
+  .cardrow { display: grid; grid-template-columns: 28px 1fr 1fr auto auto; grid-template-areas: "num t d star rm"; gap: 8px; align-items: start; margin-bottom: 8px; }
+  .cardrow .num { grid-area: num; color: var(--muted); padding-top: 10px; font-size: .85rem; text-align: right; }
+  .cardrow [data-f=term] { grid-area: t; } .cardrow [data-f=definition] { grid-area: d; }
+  .cardrow [data-star] { grid-area: star; } .cardrow [data-rm] { grid-area: rm; }
+  .star { color: var(--muted); font-size: 1.05rem; }
+  .star.on { color: #d49b00; }
+  .tools { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 6px; }
+  .flash { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+  .flash.dragging .inner { transition: none; }
+  .flash .swipe-tag { position: absolute; top: 14px; right: 16px; font-weight: 700; font-size: .85rem; padding: 3px 10px; border-radius: 99px; opacity: 0; z-index: 2; pointer-events: none; }
+  .flash[data-dir=right] .swipe-tag.k, .flash[data-dir=left] .swipe-tag.l { opacity: 1; }
+  .swipe-tag.k { background: var(--good-soft); color: var(--good); } .swipe-tag.l { background: var(--bad-soft); color: var(--bad); }
+  .flash { position: relative; transition: transform .2s; }
+  .flash.dragging { transition: none; }
+  .exbox { margin-top: 10px; padding: 12px 14px; background: var(--soft); border-radius: 10px; white-space: pre-wrap; font-size: .95rem; color: var(--ink); }
+  .plan { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .chipf { padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: .88rem; cursor: pointer; }
+  .chipf.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .setcard .eyebrow { margin: 0; }
+  .segbar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: var(--line); margin: 8px 0 6px; }
+  .segbar .m { background: var(--good); } .segbar .l { background: var(--accent); }
+  .lq { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; box-shadow: var(--shadow); }
+  .lq .prompt { font-size: 1.25rem; font-weight: 600; margin: 6px 0 16px; white-space: pre-wrap; }
+  .opt kbd { display: inline-block; min-width: 1.5em; margin-right: 8px; color: var(--muted); font: inherit; font-size: .8rem; }
+  .datefield { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; color: var(--muted); }
+  .datefield input { width: auto; padding: 5px 8px; }
 
   .overlay { position: fixed; inset: 0; background: rgba(10,12,25,.55); display: grid; place-items: center; z-index: 40; padding: 16px; }
   .modal { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; padding: 22px; width: min(440px, 100%); box-shadow: var(--shadow); }
@@ -153,7 +177,7 @@
   @media (max-width: 600px) {
     .fc-ctrl { grid-template-columns: 1fr 1fr; }
     .fc-ctrl #prev { order: 3; } .fc-ctrl #next { order: 4; }
-    .cardrow { grid-template-columns: 1fr 1fr auto; gap: 6px; }
+    .cardrow { grid-template-columns: 1fr auto; grid-template-areas: "t star" "d rm"; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
     .cardrow .num { display: none; }
     .flash { height: 260px; }
     .face { font-size: 1.15rem; }
@@ -294,31 +318,55 @@ function ask(msg, ok = 'OK', danger = false) {
 }
 
 /* ---------- home ---------- */
+const folderList = () => `<datalist id="folderList">${[...new Set(sets.map(s => s.folder).filter(Boolean))].sort().map(f => `<option value="${esc(f)}">`).join('')}</datalist>`;
+function setMeta(s) {
+  const r = readiness(s), d = daysUntil(s.examDate);
+  return [`${s.cards.length} terms`, r != null ? `${r}% ready` : '', d != null && d >= 0 ? (d === 0 ? 'test today' : d === 1 ? 'test tomorrow' : `test in ${d} days`) : '']
+    .filter(Boolean).join(' · ');
+}
 function renderHome() {
+  const folders = [...new Set(sets.map(s => s.folder).filter(Boolean))].sort();
+  const f = view.folder || '';
+  const chips = [['', 'All'], ...folders.map(x => [x, x]), ...(folders.length && sets.some(s => !s.folder) ? [['__none', 'No folder']] : [])];
   app.innerHTML = `
     <div class="row spread" style="margin-bottom:18px">
       <div>
         <h1>Your study sets</h1>
-        <p class="muted">Upload notes, a PDF or a Word doc and get flashcards, practice tests, matching and category sorting.</p>
+        <p class="muted">Upload notes, a PDF, a Word doc or photos and get flashcards, Learn mode, practice tests, matching and category sorting.</p>
       </div>
       <div class="row">
         <label class="btn">Import set<input type="file" id="imp" accept=".json,application/json" hidden></label>
         <button class="btn primary" id="new">+ New set</button>
       </div>
     </div>
-    ${sets.length ? `<div class="grid">${sets.map(s => `
-      <button class="setcard" data-id="${s.id}">
-        <strong>${esc(s.title)}</strong>
-        <span>${s.cards.length} terms · ${s.questions.length} AI questions · ${s.categories.length} categories</span>
-      </button>`).join('')}</div>`
+    ${sets.length ? `
+      <div class="row" style="margin-bottom:14px">
+        ${sets.length > 3 ? `<input type="text" id="q" placeholder="Search sets" value="${esc(view.q || '')}" style="max-width:240px">` : ''}
+        ${folders.length ? chips.map(([v, l]) => `<button class="chipf ${f === v ? 'on' : ''}" data-folder="${esc(v)}">${esc(l)}</button>`).join('') : ''}
+      </div>
+      <div class="grid" id="grid"></div>`
     : `<div class="panel empty"><h2>No sets yet</h2><p>Make your first one from your notes.</p><button class="btn primary" id="new2">+ New set</button></div>`}`;
-  $$('[data-id]').forEach(b => b.onclick = () => go({ name: 'set', id: b.dataset.id, tab: 'cards' }));
-  $('#new').onclick = () => go({ name: 'create' });
+  const drawGrid = () => {
+    const g = $('#grid'); if (!g) return;
+    const q = (view.q || '').toLowerCase();
+    const list = sets.filter(s => (!f || (f === '__none' ? !s.folder : s.folder === f)) && (!q || (s.title + ' ' + s.folder).toLowerCase().includes(q)));
+    g.innerHTML = list.length ? list.map(s => `
+      <button class="setcard" data-id="${s.id}">
+        ${s.folder ? `<span class="eyebrow">${esc(s.folder)}</span>` : ''}
+        <strong>${esc(s.title)}</strong>
+        <span>${setMeta(s)}</span>
+      </button>`).join('') : '<p class="muted">No sets match.</p>';
+    $$('[data-id]', g).forEach(b => b.onclick = () => go({ name: 'set', id: b.dataset.id, tab: 'cards' }));
+  };
+  drawGrid();
+  if ($('#q')) $('#q').oninput = e => { view.q = e.target.value; drawGrid(); };
+  $$('[data-folder]').forEach(b => b.onclick = () => { view.folder = b.dataset.folder; renderHome(); });
+  $('#new').onclick = () => go({ name: 'create', folder: f && f !== '__none' ? f : '' });
   if ($('#new2')) $('#new2').onclick = () => go({ name: 'create' });
   $('#imp').onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
+    const file = e.target.files[0]; if (!file) return;
     try {
-      const s = normalizeSet(JSON.parse(await f.text()));
+      const s = normalizeSet(JSON.parse(await file.text()));
       s.id = uid(); sets.unshift(s); saveSets(s); toast('Imported "' + s.title + '"'); render();
     } catch { toast('That file is not a Studyhall set'); }
   };
@@ -326,11 +374,20 @@ function renderHome() {
 
 /* ---------- create ---------- */
 function renderCreate() {
+  const target = view.addTo ? getSet(view.addTo) : null;
+  if (view.addTo && !target) return go({ name: 'home' });
   app.innerHTML = `
-    <h1>New study set</h1>
-    <p class="muted">Add your material, then let the AI build the study tools. You can edit everything afterward.</p>
+    ${target ? `<button class="btn ghost sm" id="back" style="margin-bottom:8px">← Back to ${esc(target.title)}</button>
+    <h1>Add material</h1>
+    <p class="muted">Upload or paste new notes for <strong>${esc(target.title)}</strong>. Claude adds only terms and questions the set doesn't already have.</p>`
+    : `<h1>New study set</h1>
+    <p class="muted">Add your material, then let the AI build the study tools. You can edit everything afterward.</p>`}
     <div class="panel">
-      <label class="field">Title <input type="text" id="title" placeholder="e.g. Bio Unit 4: Cell Respiration"></label>
+      <div class="row" style="gap:12px;align-items:flex-start" ${target ? 'hidden' : ''}>
+        <label class="field" style="flex:2;min-width:220px">Title <input type="text" id="title" placeholder="e.g. Bio Unit 4: Cell Respiration" value="${target ? esc(target.title) : ''}"></label>
+        <label class="field" style="flex:1;min-width:160px">Folder <span class="muted small">(optional)</span><input type="text" id="folder" list="folderList" placeholder="e.g. Biology" value="${esc(view.folder || '')}"></label>
+        ${folderList()}
+      </div>
       <div class="drop" id="drop">
         <strong>Drop files here or click to upload</strong>
         <div class="muted small">PDF, Word (.docx), .txt, .md, .csv${sampleCaps?.images ? ', or photos of your notes' : ''}. You can add several.</div>
@@ -344,24 +401,25 @@ function renderCreate() {
       <div class="muted small" id="count">0 characters</div>
     </div>
     <div class="panel">
-      <h2>What to make</h2>
+      <h2>${target ? 'What to add' : 'What to make'}</h2>
       <div class="row" style="gap:16px">
         <label class="field" style="flex:1;min-width:150px">Flashcards
-          <select id="nCards"><option>10</option><option selected>20</option><option>30</option><option>50</option></select></label>
+          <select id="nCards"><option ${target ? 'selected' : ''}>10</option><option ${target ? '' : 'selected'}>20</option><option>30</option><option>50</option></select></label>
         <label class="field" style="flex:1;min-width:150px">Test questions
-          <select id="nQs"><option>10</option><option selected>15</option><option>25</option><option>40</option></select></label>
+          <select id="nQs"><option ${target ? 'selected' : ''}>10</option><option ${target ? '' : 'selected'}>15</option><option>25</option><option>40</option></select></label>
         <label class="field" style="flex:1;min-width:150px">Category groups
           <select id="nCats"><option value="0">None</option><option value="auto" selected>Let the AI decide</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
       </div>
       ${sample ? '' : `<p class="muted small" id="aiNote">AI needs this page open on claude.ai while signed in. You can still make cards from "Term - definition" lines.</p>`}
       <div class="row">
-        <button class="btn primary" id="gen" ${sample ? '' : 'disabled'}>Generate with AI</button>
-        <button class="btn" id="manual">Make cards without AI</button>
+        <button class="btn primary" id="gen" ${sample ? '' : 'disabled'}>${target ? 'Add with AI' : 'Generate with AI'}</button>
+        <button class="btn" id="manual">${target ? 'Add without AI' : 'Make cards without AI'}</button>
       </div>
       <div class="status" id="genStatus" style="margin-top:10px"></div>
     </div>`;
 
   const src = $('#src'), drop = $('#drop'), file = $('#file');
+  if ($('#back')) $('#back').onclick = () => go({ name: 'set', id: target.id, tab: 'cards' });
   const images = [];
   const drawThumbs = () => {
     $('#thumbs').innerHTML = images.map((b, i) => `<figure><img src="${URL.createObjectURL(b)}" alt="Page ${i + 1}"><button data-x="${i}" aria-label="Remove">✕</button></figure>`).join('');
@@ -414,7 +472,8 @@ function renderCreate() {
       $('#genStatus').textContent = 'No terms found. Put one per line like "Term - definition" (a colon, tab or = also works).';
       return;
     }
-    finishSet({ title: $('#title').value || 'Untitled set', ...parsed, questions: [] });
+    if (target) return addToSet(target, { ...parsed, questions: [] });
+    finishSet({ title: $('#title').value || 'Untitled set', folder: $('#folder').value, ...parsed, questions: [] });
   };
 
   $('#gen').onclick = async () => {
@@ -426,11 +485,12 @@ function renderCreate() {
     const btn = $('#gen'); btn.disabled = true;
     st.className = 'status muted'; st.innerHTML = '<span class="spin"></span> Claude is reading your material. This can take a minute or two...';
     try {
-      const data = await sample.json(buildPrompt(text || '(see the attached images)', $('#nCards').value, $('#nQs').value, $('#nCats').value, images.length),
+      const data = await sample.json(buildPrompt(text || '(see the attached images)', $('#nCards').value, $('#nQs').value, $('#nCats').value, images.length, target),
         { cache: false, ...(images.length ? { images } : {}) });
-      const set = normalizeSet({ ...data, title: $('#title').value || data.title });
+      const set = normalizeSet({ ...data, title: $('#title').value || data.title, folder: $('#folder').value });
       if (!set.cards.length && !set.questions.length) throw new Error('The AI sent back nothing usable. Try again.');
       if (note) toast(note.trim());
+      if (target) { if (!getSet(target.id)) throw new Error('That set was deleted.'); return addToSet(target, set); }
       finishSet(set);
     } catch (err) {
       st.className = 'status err'; st.textContent = aiError(err); btn.disabled = false;
@@ -446,6 +506,22 @@ function refreshCreate() {
     f.accept += ',' + sampleCaps.images.mediaTypes.join(',');
     $('#drop .muted').textContent = 'PDF, Word (.docx), .txt, .md, .csv, or photos of your notes. You can add several.';
   }
+}
+
+function addToSet(set, add) {
+  const have = new Set(set.cards.map(c => c.term.toLowerCase()));
+  const cards = add.cards.filter(c => !have.has(c.term.toLowerCase()) && have.add(c.term.toLowerCase()));
+  set.cards.push(...cards);
+  for (const c of add.categories || []) {
+    const ex = set.categories.find(x => x.name.toLowerCase() === c.name.toLowerCase());
+    if (ex) ex.items = [...new Set([...ex.items, ...c.items])]; else set.categories.push(c);
+  }
+  const haveQ = new Set(set.questions.map(q => q.question.toLowerCase()));
+  const qs = (add.questions || []).filter(q => !haveQ.has(q.question.toLowerCase()));
+  set.questions.push(...qs);
+  saveSets(set);
+  toast(cards.length || qs.length ? `Added ${cards.length} new term${cards.length === 1 ? '' : 's'} and ${qs.length} question${qs.length === 1 ? '' : 's'}` : 'Nothing new found. Everything was already in the set.');
+  go({ name: 'set', id: set.id, tab: 'cards' });
 }
 
 function finishSet(s) {
@@ -516,7 +592,7 @@ function parsePlain(text) {
 }
 
 /* ---------- AI ---------- */
-function buildPrompt(text, nCards, nQs, nCats, nImages = 0) {
+function buildPrompt(text, nCards, nQs, nCats, nImages = 0, existing = null) {
   const catRule = nCats === '0' ? 'Return "categories": [].'
     : `Make ${nCats === 'auto' ? '2 to 5' : nCats} categories. Each has 3 to 8 short items (a word or short phrase) that clearly belong to that category and no other. Group by whatever divides the material best (types, time periods, causes vs effects, people vs events, etc).`;
   return `You turn a student's study material into study tools. Use only facts from the material. Write in plain, simple language.${nImages ? ` The student also attached ${nImages} image(s) of their notes or pages; read them as part of the material.` : ''}
@@ -535,7 +611,7 @@ Return ONLY a JSON object in exactly this shape:
 Rules:
 - "cards": up to ${nCards} of the most important terms, people, dates or concepts. Definitions under 30 words. No duplicates.
 - ${catRule}
-- "questions": ${nQs} questions, about 70% "mc" and 30% "tf". For "mc", "answer" is the 0-based index of the correct choice, put the correct choice in a random position, and make wrong choices believable. Test understanding, not just wording. "explanation" is one sentence.
+${existing ? `- This material is being ADDED to an existing set. It already has these terms: ${existing.cards.map(c => c.term).join('; ').slice(0, 20000)}. Do not repeat them or make reworded copies. Only add cards, questions and category items that are new.${existing.categories.length ? ` Existing categories: ${existing.categories.map(c => c.name).join('; ')}. When a new item fits one, use that exact category name.` : ''}\n` : ''}- "questions": ${nQs} questions, about 70% "mc" and 30% "tf". For "mc", "answer" is the 0-based index of the correct choice, put the correct choice in a random position, and make wrong choices believable. Test understanding, not just wording. "explanation" is one sentence.
 
 MATERIAL:
 """
@@ -560,14 +636,15 @@ function aiError(e) {
 function normalizeSet(d) {
   const str = v => (typeof v === 'string' || typeof v === 'number') ? String(v).trim() : '';
   const cards = (Array.isArray(d.cards) ? d.cards : [])
-    .map(c => ({ term: str(c?.term), definition: str(c?.definition), known: !!c?.known, ...(typeof c?.s === 'number' ? { s: c.s } : {}) }))
+    .map(c => ({ term: str(c?.term), definition: str(c?.definition), known: !!c?.known, ...(typeof c?.s === 'number' ? { s: c.s } : {}), ...(typeof c?.t === 'number' ? { t: c.t } : {}), ...(c?.star ? { star: true } : {}) }))
     .filter(c => c.term && c.definition);
   const categories = (Array.isArray(d.categories) ? d.categories : [])
     .map(c => ({ name: str(c?.name), items: [...new Set((Array.isArray(c?.items) ? c.items : []).map(str).filter(Boolean))] }))
     .filter(c => c.name && c.items.length);
   const questions = (Array.isArray(d.questions) ? d.questions : []).map(normQuestion).filter(Boolean);
   const tests = (Array.isArray(d.tests) ? d.tests : []).filter(t => t && typeof t.score === 'number').slice(-20);
-  return { id: d.id, title: str(d.title) || 'Untitled set', cards, categories, questions, tests, catS: typeof d.catS === 'number' ? d.catS : null,
+  return { id: d.id, title: str(d.title) || 'Untitled set', cards, categories, questions, tests, catS: typeof d.catS === 'number' ? d.catS : null, ...(typeof d.catT === 'number' ? { catT: d.catT } : {}),
+    folder: str(d.folder), examDate: /^\d{4}-\d{2}-\d{2}$/.test(d.examDate || '') ? d.examDate : '',
     bestMatch: d.bestMatch || null, created: d.created || Date.now(), updated: d.updated || d.created || 0 };
 }
 
@@ -585,46 +662,102 @@ function normQuestion(q) {
 }
 
 /* ---------- readiness ---------- */
-// Each card carries a mastery value `s` (0-1) that moves toward 1 on a right answer and
-// toward 0 on a wrong one. Tests move it most, flashcard self-ratings less, Match least.
-const ALPHA = { test: 0.45, card: 0.25, match: 0.15 };
-function bump(card, ok, a) { const s = card.s ?? 0.3; card.s = +(s + a * ((ok ? 1 : 0) - s)).toFixed(3); }
+// Each card carries a mastery value `s` (0-1) and when it was last practiced `t`. Right answers
+// pull `s` toward 1, wrong ones toward 0. Memory fades between sessions: the effective value
+// halves after 3 days for a shaky term and after about 4 weeks for a solid one.
+const ALPHA = { test: 0.45, learn: 0.3, card: 0.25, match: 0.15 };
+const DAY = 864e5;
+function eff(c, now = Date.now()) {
+  if (c.s == null) return 0;
+  const days = c.t ? Math.max(0, now - c.t) / DAY : 0;
+  return c.s * Math.pow(0.5, days / (3 + 25 * c.s * c.s));
+}
+function bump(card, ok, a) { const s = card.s == null ? 0.3 : eff(card); card.s = +(s + a * ((ok ? 1 : 0) - s)).toFixed(3); card.t = Date.now(); }
+function fade(v, at, halfDays) { return at ? v * Math.pow(0.5, Math.max(0, Date.now() - at) / DAY / halfDays) : v; }
 function readiness(set) {
+  if (!set.cards.some(c => c.s != null) && !(set.tests || []).length && set.catS == null) return null;
   const parts = [];
-  if (set.cards.length) parts.push([set.cards.reduce((t, c) => t + (c.s ?? 0), 0) / set.cards.length, 0.55]);
+  if (set.cards.length) parts.push([set.cards.reduce((t, c) => t + eff(c), 0) / set.cards.length, 0.55]);
   const recent = (set.tests || []).slice(-3);
-  if (recent.length) parts.push([recent.reduce((t, x) => t + x.score, 0) / recent.length, 0.35]);
-  if (set.categories.length && set.catS != null) parts.push([set.catS, 0.1]);
+  if (recent.length) parts.push([recent.reduce((t, x) => t + fade(x.score, x.at, 10), 0) / recent.length, 0.35]);
+  if (set.categories.length && set.catS != null) parts.push([fade(set.catS, set.catT, 14), 0.1]);
   if (!parts.length) return null;
   let r = parts.reduce((t, [v, w]) => t + v * w, 0) / parts.reduce((t, [, w]) => t + w, 0) * 100;
   if (!recent.length) r = Math.min(r, 80);
   return Math.round(r);
 }
+function daysUntil(date) {
+  if (!date) return null;
+  const [y, m, d] = date.split('-').map(Number), today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(y, m - 1, d) - today) / DAY);
+}
+// Spread the weak terms over the days left, at least 3 a day.
+function todayPlan(set) {
+  const d = daysUntil(set.examDate);
+  if (d == null || d < 0) return null;
+  const weak = set.cards.filter(c => eff(c) < 0.7).sort((a, b) => eff(a) - eff(b));
+  const n = Math.min(weak.length, Math.max(3, Math.ceil(weak.length / Math.max(d, 1))));
+  return { days: d, cards: weak.slice(0, n) };
+}
+const whenText = d => d === 0 ? 'Your test is today' : d === 1 ? 'Your test is tomorrow' : `Your test is in ${d} days`;
 function readinessPanel(set, before) {
   const r = readiness(set);
   if (r == null) return '';
   const [label, col] = r >= 85 ? ['Ready for the test', 'var(--good)'] : r >= 70 ? ['Almost ready', 'var(--accent)'] : r >= 50 ? ['Getting there', 'var(--mark)'] : ['Not ready yet', 'var(--bad)'];
   const d = before == null ? 0 : r - before;
-  const weak = set.cards.filter(c => (c.s ?? 0) < 0.7).sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).slice(0, 5);
+  const plan = todayPlan(set);
+  const weak = set.cards.filter(c => eff(c) < 0.7).sort((a, b) => eff(a) - eff(b)).slice(0, 5);
+  const pills = cs => cs.map(c => `<span class="pill">${esc(c.term)}</span>`).join('');
   return `<div class="panel ready" style="--rcol:${col}">
     <div class="eyebrow">Test readiness</div>
     <div class="score">${r}%${d ? `<span class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${d}</span>` : ''}</div>
     <div class="muted">${label}${(set.tests || []).length ? '' : '. Take a practice test to go above 80%.'}</div>
     <div class="bar"><div style="width:${r}%"></div></div>
-    ${weak.length ? `<div class="small"><strong>Work on:</strong> ${weak.map(c => `<span class="pill">${esc(c.term)}</span>`).join('')}</div>`
-      : '<div class="small muted">No weak terms right now.</div>'}
+    ${plan ? `<div class="small"><strong>${whenText(plan.days)}.</strong> ${plan.cards.length
+        ? `Study these ${plan.cards.length} today:</div><div style="margin:6px 0 10px">${pills(plan.cards)}</div><button class="btn sm primary" data-plan="${set.id}">Learn them now</button>`
+        : 'Nothing weak right now. A quick practice test keeps it fresh.</div>'}`
+      : weak.length ? `<div class="small"><strong>Work on:</strong> ${pills(weak)}</div>`
+      : '<div class="small muted">No weak terms right now. Readiness drops a little each day you don\'t practice.</div>'}
   </div>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-plan]');
+  if (b) go({ name: 'set', id: b.dataset.plan, tab: 'learn', plan: true });
+});
+
+/* ---------- explain + read aloud ---------- */
+const canSpeak = 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+function speak(text) {
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; speechSynthesis.speak(u); }
+  catch { toast('Read aloud is not available here.'); }
+}
+async function explain(el, set, item) {
+  el.hidden = false; el.innerHTML = '<span class="spin"></span> Claude is explaining...';
+  const card = cardFor(set, { question: item.question, about: item.about, type: 'x' });
+  try {
+    const { text } = await sample(`A student studying "${set.title}" got a practice question wrong. Explain the right answer so it sticks.
+Write 2 to 4 short sentences in plain language. If their answer is a different but related idea, say how the two differ. End with one line that starts with "Memory tip:" giving an example or a trick. No markdown, headings or bold.
+
+Question: ${item.question}
+Correct answer: ${item.correct}
+Their answer: ${item.given}${card ? `\nFrom their notes: ${card.term} = ${card.definition}` : ''}`,
+      { modelTier: 'quick', onText: ({ text }) => { el.textContent = text; } });
+    el.textContent = text;
+  } catch (e) { el.textContent = aiError(e); }
 }
 
 /* ---------- set view ---------- */
-const TABS = [['cards', 'Flashcards'], ['test', 'Practice test'], ['match', 'Match'], ['cats', 'Categories'], ['edit', 'Edit']];
+const TABS = [['cards', 'Flashcards'], ['learn', 'Learn'], ['test', 'Practice test'], ['match', 'Match'], ['cats', 'Categories'], ['edit', 'Edit']];
 function renderSet() {
   const set = getSet(view.id);
   if (!set) return go({ name: 'home' });
   app.innerHTML = `
     <div class="row spread">
-      <div><h1>${esc(set.title)}</h1><div class="muted small">${set.cards.length} terms · ${set.questions.length} AI questions · ${set.categories.length} categories${readiness(set) != null ? ` · <strong>Readiness ${readiness(set)}%</strong>` : ''}</div></div>
+      <div>${set.folder ? `<div class="eyebrow">${esc(set.folder)}</div>` : ''}<h1>${esc(set.title)}</h1><div class="muted small">${set.cards.length} terms · ${set.questions.length} AI questions · ${set.categories.length} categories${readiness(set) != null ? ` · <strong>Readiness ${readiness(set)}%</strong>` : ''}</div>
+        <label class="datefield" style="margin-top:8px">Test date <input type="date" id="exam" value="${esc(set.examDate)}"></label></div>
       <div class="row">
+        <button class="btn sm" id="addMat">+ Add material</button>
         <button class="btn sm" id="exp">Export</button>
         <button class="btn sm bad" id="del">Delete</button>
       </div>
@@ -632,6 +765,8 @@ function renderSet() {
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="tab ${view.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav>
     <section id="pane"></section>`;
   $$('[data-tab]').forEach(b => b.onclick = () => { if (b.dataset.tab !== view.tab) go({ name: 'set', id: set.id, tab: b.dataset.tab }); });
+  $('#exam').onchange = e => { set.examDate = e.target.value; saveSets(set); render(); toast(set.examDate ? 'Test date saved' : 'Test date cleared'); };
+  $('#addMat').onclick = () => go({ name: 'create', addTo: set.id });
   $('#exp').hidden = !downloads;
   $('#exp').onclick = async () => {
     const { id, ...rest } = set;
@@ -643,7 +778,7 @@ function renderSet() {
     if (!await ask(`Delete "${set.title}"? This can't be undone.`, 'Delete', true)) return;
     sets = sets.filter(s => s !== set); store(LS_SETS, sets); persist(set, true); go({ name: 'home' });
   };
-  ({ cards: paneCards, test: paneTest, match: paneMatch, cats: paneCats, edit: paneEdit })[view.tab]($('#pane'), set);
+  ({ cards: paneCards, learn: paneLearn, test: paneTest, match: paneMatch, cats: paneCats, edit: paneEdit })[view.tab]($('#pane'), set);
 }
 const empty = (msg, btn = true) => `<div class="panel empty"><p>${msg}</p>${btn ? '<button class="btn" data-goedit>Open the editor</button>' : ''}</div>`;
 function bindEmpty(p) { const b = $('[data-goedit]', p); if (b) b.onclick = () => go({ ...view, tab: 'edit' }); }
@@ -651,10 +786,16 @@ function bindEmpty(p) { const b = $('[data-goedit]', p); if (b) b.onclick = () =
 /* flashcards */
 function paneCards(p, set) {
   if (!set.cards.length) { p.innerHTML = empty('This set has no flashcards yet.'); return bindEmpty(p); }
-  const st = view.fc ||= { order: set.cards.map((_, i) => i), pos: 0, flipped: false, only: false, defFirst: false, before: readiness(set) };
+  const st = view.fc ||= { order: set.cards.map((_, i) => i), pos: 0, flipped: false, only: false, starOnly: false, defFirst: false, before: readiness(set) };
+  const visible = () => st.order.filter(i => (!st.only || !set.cards[i].known) && (!st.starOnly || set.cards[i].star));
   const draw = () => {
-    const order = st.only ? st.order.filter(i => !set.cards[i].known) : st.order;
+    const order = visible();
     const known = set.cards.filter(c => c.known).length;
+    if (st.starOnly && !order.length && !st.roundDone) {
+      p.innerHTML = `<div class="panel empty"><h2>No starred cards${st.only ? ' left to learn' : ''}</h2><p>Tap the star on a card to add it to this pile.</p><button class="btn" id="allc">Show all cards</button></div>`;
+      $('#allc', p).onclick = () => { st.starOnly = false; st.only = false; st.pos = 0; draw(); };
+      return;
+    }
     if (!order.length || st.roundDone) {
       p.innerHTML = `<div class="panel empty"><h2>${order.length ? 'Round done' : `You marked all ${set.cards.length} terms as known`}</h2>
         <p>${known} known · ${set.cards.length - known} still learning</p>
@@ -674,7 +815,12 @@ function paneCards(p, set) {
     p.innerHTML = `
       <div class="row spread small"><strong>${st.pos + 1} / ${order.length}</strong><span class="muted">${known} known · ${set.cards.length - known} still learning</span></div>
       <div class="bar"><div style="width:${(st.pos + 1) / order.length * 100}%"></div></div>
+      <div class="tools">
+        ${canSpeak ? '<button class="btn ghost sm" id="speak">Read aloud</button>' : ''}
+        <button class="btn ghost sm star ${c.star ? 'on' : ''}" id="star" aria-pressed="${!!c.star}">${c.star ? '★ Starred' : '☆ Star'}</button>
+      </div>
       <button class="flash ${st.flipped ? 'flipped' : ''}" id="flash" aria-label="Flip card">
+        <span class="swipe-tag k">Know it</span><span class="swipe-tag l">Still learning</span>
         <div class="inner">
           <div class="face front"><span class="lbl">${st.defFirst ? 'Definition' : 'Term'}</span>${esc(f)}</div>
           <div class="face back"><span class="lbl">${st.defFirst ? 'Term' : 'Definition'}</span>${esc(b)}</div>
@@ -689,25 +835,46 @@ function paneCards(p, set) {
       <div class="row">
         <button class="btn ghost sm" id="shuf">Shuffle</button>
         <label class="check"><input type="checkbox" id="only" ${st.only ? 'checked' : ''}> Only still-learning</label>
+        <label class="check"><input type="checkbox" id="staro" ${st.starOnly ? 'checked' : ''}> Only starred</label>
         <label class="check"><input type="checkbox" id="deff" ${st.defFirst ? 'checked' : ''}> Definition first</label>
       </div>
-      <p class="muted small" style="margin-top:10px">Click the card or press space to flip. Arrow keys move between cards.</p>`;
+      <p class="muted small" style="margin-top:10px">Tap the card or press space to flip. Swipe right if you know it, left if you're still learning. Arrow keys move between cards.</p>`;
     const flash = $('#flash', p);
     const flip = () => { st.flipped = !st.flipped; flash.classList.toggle('flipped', st.flipped); };
     const move = d => { st.pos = (st.pos + d + order.length) % order.length; st.flipped = false; draw(); };
     const mark = k => {
       c.known = k; bump(c, k, ALPHA.card); saveSets(set); st.flipped = false;
       if (!(st.only && k)) st.pos++;
-      if (st.pos >= (st.only ? st.order.filter(i => !set.cards[i].known).length : order.length)) { st.pos = 0; st.roundDone = true; }
+      if (st.pos >= visible().length) { st.pos = 0; st.roundDone = true; }
       draw();
     };
-    flash.onclick = flip;
+    // swipe: drag the card sideways past 80px to rate it
+    let sx = null, sy = 0, dx = 0, dragged = false;
+    flash.onpointerdown = e => { sx = e.clientX; sy = e.clientY; dx = 0; dragged = false; };
+    flash.onpointermove = e => {
+      if (sx == null) return;
+      dx = e.clientX - sx;
+      if (!dragged && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(e.clientY - sy)) { dragged = true; flash.classList.add('dragging'); try { flash.setPointerCapture(e.pointerId); } catch {} }
+      if (dragged) { flash.style.transform = `translateX(${dx}px) rotate(${dx / 25}deg)`; flash.dataset.dir = dx > 40 ? 'right' : dx < -40 ? 'left' : ''; }
+    };
+    const end = () => {
+      if (sx == null) return; sx = null;
+      if (!dragged) return;
+      flash.classList.remove('dragging');
+      if (Math.abs(dx) > 80) { flash.style.transform = `translateX(${dx > 0 ? 600 : -600}px) rotate(${dx > 0 ? 20 : -20}deg)`; setTimeout(() => mark(dx > 0), 160); }
+      else { flash.style.transform = ''; flash.dataset.dir = ''; }
+    };
+    flash.onpointerup = end; flash.onpointercancel = end;
+    flash.onclick = () => { if (dragged) { dragged = false; return; } flip(); };
+    if ($('#speak', p)) $('#speak', p).onclick = () => speak(st.flipped ? b : f);
+    $('#star', p).onclick = () => { c.star = !c.star; if (!c.star) delete c.star; saveSets(set); draw(); };
     $('#prev', p).onclick = () => move(-1);
     $('#next', p).onclick = () => move(1);
     $('#know', p).onclick = () => mark(true);
     $('#learn', p).onclick = () => mark(false);
     $('#shuf', p).onclick = () => { st.order = shuffle(st.order); st.pos = 0; st.flipped = false; draw(); toast('Shuffled'); };
     $('#only', p).onchange = e => { st.only = e.target.checked; st.pos = 0; st.flipped = false; draw(); };
+    $('#staro', p).onchange = e => { st.starOnly = e.target.checked; st.pos = 0; st.flipped = false; draw(); };
     $('#deff', p).onchange = e => { st.defFirst = e.target.checked; st.flipped = false; draw(); };
     keyHandler = e => {
       if (e.key === ' ') { e.preventDefault(); flip(); }
@@ -718,13 +885,153 @@ function paneCards(p, set) {
   draw();
 }
 
+/* learn: rounds of up to 7 terms; a term is learned after one right multiple-choice
+   answer and then one right written answer. Misses come back next round. */
+function paneLearn(p, set) {
+  if (!set.cards.length) { p.innerHTML = empty('This set has no flashcards yet.'); return bindEmpty(p); }
+  let st = view.learn;
+  if (!st) {
+    const starred = set.cards.filter(c => c.star), plan = todayPlan(set);
+    const o = view.learnOpt ||= { which: view.plan && plan?.cards.length ? 'plan' : 'all', showDef: true };
+    p.innerHTML = `
+      <div class="panel">
+        <h2>Learn</h2>
+        <p class="muted">Short rounds that adapt to you. You start with multiple choice, then type the answer once you've got it. Terms you miss come back until you know them.</p>
+        <div style="display:grid;gap:8px;margin-bottom:14px">
+          <label class="check"><input type="radio" name="lw" value="all" ${o.which === 'all' ? 'checked' : ''}> All terms (${set.cards.length})</label>
+          <label class="check"><input type="radio" name="lw" value="weak" ${o.which === 'weak' ? 'checked' : ''}> Only terms I'm weak on (${set.cards.filter(c => eff(c) < 0.7).length})</label>
+          <label class="check"><input type="radio" name="lw" value="star" ${o.which === 'star' ? 'checked' : ''} ${starred.length ? '' : 'disabled'}> Starred terms (${starred.length})</label>
+          ${plan?.cards.length ? `<label class="check"><input type="radio" name="lw" value="plan" ${o.which === 'plan' ? 'checked' : ''}> Today's plan (${plan.cards.length})</label>` : ''}
+        </div>
+        <label class="field" style="max-width:320px">Questions show
+          <select id="lDir"><option value="def" ${o.showDef ? 'selected' : ''}>the definition, you answer with the term</option><option value="term" ${o.showDef ? '' : 'selected'}>the term, you answer with the definition</option></select></label>
+        <button class="btn primary" id="lStart">Start learning</button>
+        <div class="status err" id="lErr"></div>
+      </div>${readinessPanel(set)}`;
+    $('#lStart', p).onclick = () => {
+      o.which = $('input[name=lw]:checked', p)?.value || 'all'; o.showDef = $('#lDir', p).value === 'def';
+      const pool = o.which === 'star' ? starred : o.which === 'plan' ? plan.cards : o.which === 'weak' ? set.cards.filter(c => eff(c) < 0.7) : set.cards;
+      if (!pool.length) { $('#lErr', p).textContent = 'No terms in that group right now.'; return; }
+      view.learn = { pool: pool.slice(), stage: new Map(), roundNo: 0, round: [], ri: 0, phase: 'ask', showDef: o.showDef, before: readiness(set), log: [] };
+      nextRound(view.learn); paneLearn(p, set);
+    };
+    return;
+  }
+
+  const stageOf = c => st.stage.get(c) || 0;
+  const counts = () => { let m = 0, l = 0; st.pool.forEach(c => { const g = stageOf(c); if (g >= 2) m++; else if (g === 1) l++; }); return { m, l, n: st.pool.length - m - l }; };
+  const k = counts();
+  const bar = `<div class="segbar"><div class="m" style="width:${k.m / st.pool.length * 100}%"></div><div class="l" style="width:${k.l / st.pool.length * 100}%"></div></div>
+    <div class="row spread small muted"><span>Learned ${k.m} · In progress ${k.l} · Not started ${k.n}</span><button class="btn ghost sm" id="lQuit">End session</button></div>`;
+
+  if (st.phase === 'done') {
+    p.innerHTML = `<div class="panel empty"><h2>You learned all ${st.pool.length} terms</h2><p>Come back in a day or two and run it again so they stick.</p>
+      <div class="row" style="justify-content:center"><button class="btn" id="lAgain">Learn again</button><button class="btn primary" id="lTest">Take a practice test</button></div></div>${readinessPanel(set, st.before)}`;
+    $('#lAgain', p).onclick = () => { view.learn = null; paneLearn(p, set); };
+    $('#lTest', p).onclick = () => go({ name: 'set', id: set.id, tab: 'test' });
+    return;
+  }
+  if (st.phase === 'roundEnd') {
+    const r = st.log.filter(x => x.round === st.roundNo), right = r.filter(x => x.ok).length;
+    p.innerHTML = `${bar}<div class="panel empty"><h2>Round ${st.roundNo} done</h2><p>${right} of ${r.length} right this round.</p>
+      <button class="btn primary" id="lNext">Keep going</button></div>`;
+    $('#lNext', p).onclick = () => { nextRound(st); paneLearn(p, set); };
+    keyHandler = e => { if (e.key === 'Enter') $('#lNext', p).click(); };
+    bindQuit();
+    return;
+  }
+
+  const c = st.round[st.ri];
+  const prompt = st.showDef ? c.definition : c.term, expected = st.showDef ? c.term : c.definition;
+  const field = st.showDef ? 'term' : 'definition';
+  const written = stageOf(c) >= 1 || set.cards.length < 4;
+  if (!st.q || st.q.card !== c) {
+    st.q = { card: c, written, answer: null, ok: null, why: '', checking: false };
+    if (!written) {
+      const others = shuffle(set.cards.filter(x => x !== c && x[field] !== expected)).slice(0, 3);
+      st.q.choices = shuffle([c, ...others]);
+    }
+  }
+  const q = st.q;
+  let body = '';
+  if (!q.written) body = `<div class="opts">${q.choices.map((x, i) => {
+    let cls = '';
+    if (q.ok !== null) cls = x === c ? 'ok' : q.answer === i ? 'no' : '';
+    return `<button class="opt ${cls}" data-lo="${i}" ${q.ok !== null ? 'disabled' : ''}><kbd>${i + 1}</kbd>${esc(x[field])}</button>`; }).join('')}</div>`;
+  else body = `<div class="row" style="flex-wrap:nowrap"><input type="text" id="lIn" autocomplete="off" placeholder="Type the ${field}" value="${esc(q.answer || '')}" ${q.ok !== null || q.checking ? 'disabled' : ''}>
+      ${q.ok === null ? `<button class="btn primary" id="lCheck" ${q.checking ? 'disabled' : ''}>${q.checking ? '<span class="spin"></span>' : 'Check'}</button>` : ''}</div>
+      ${q.ok === null && !q.checking ? '<button class="btn ghost sm" id="lSkip" style="margin-top:8px">I don\'t know</button>' : ''}`;
+  let fb = '';
+  if (q.ok === true) fb = `<div class="fb good">${q.why ? 'Claude counted this as correct. ' + esc(q.why) : 'Correct!'}${q.written && q.why ? ` <span class="muted">Expected: ${esc(expected)}</span>` : ''}</div>`;
+  else if (q.ok === false) fb = `<div class="fb bad">The answer is <strong>${esc(expected)}</strong>.${q.why ? ' ' + esc(q.why) : ''}</div>
+    <div class="row" style="margin-top:8px">${sample ? '<button class="btn sm" id="lEx">Explain this</button>' : ''}${q.written && q.answer ? '<button class="btn sm" id="lOv">I was right</button>' : ''}</div><div class="exbox" id="lExBox" hidden></div>`;
+  p.innerHTML = `${bar}
+    <div class="lq">
+      <div class="row spread"><span class="eyebrow">${q.written ? 'Type the answer' : 'Pick the answer'} · ${st.showDef ? 'Definition' : 'Term'}</span>
+        <span class="row" style="gap:4px">${canSpeak ? '<button class="btn ghost sm" id="lSpeak">Read aloud</button>' : ''}<button class="btn ghost sm star ${c.star ? 'on' : ''}" id="lStar">${c.star ? '★' : '☆'}</button></span></div>
+      <div class="prompt">${esc(prompt)}</div>
+      ${body}${fb}
+      ${q.ok !== null ? '<div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn primary" id="lCont">Continue</button></div>' : ''}
+    </div>`;
+
+  const finish = (ok, why = '') => {
+    q.ok = ok; q.why = why;
+    if (ok) st.stage.set(c, stageOf(c) + 1);
+    bump(c, ok, ALPHA.learn); saveSets(set);
+    st.log.push({ round: st.roundNo, card: c, ok });
+    paneLearn(p, set);
+  };
+  const advance = () => {
+    st.q = null; st.ri++;
+    if (st.ri >= st.round.length) st.phase = st.pool.every(x => stageOf(x) >= 2) ? 'done' : 'roundEnd';
+    paneLearn(p, set);
+  };
+  $$('[data-lo]', p).forEach(b => b.onclick = () => { q.answer = +b.dataset.lo; finish(q.choices[q.answer] === c); });
+  const inp = $('#lIn', p);
+  const check = async () => {
+    const a = inp.value.trim(); if (!a) return;
+    q.answer = a;
+    if (looseMatch(a, expected)) return finish(true);
+    if (!sample) return finish(false);
+    q.checking = true; paneLearn(p, set);
+    let res = null;
+    try { res = (await aiGrade(set, [{ q: { question: prompt, answer: expected }, i: 0, a }]))[0]; } catch {}
+    q.checking = false;
+    if (view.learn !== st || st.q !== q) return;
+    finish(!!res?.ok, res?.why || '');
+  };
+  if (inp && q.ok === null && !q.checking) { inp.focus(); inp.onkeydown = e => { if (e.key === 'Enter') check(); }; }
+  if ($('#lCheck', p)) $('#lCheck', p).onclick = check;
+  if ($('#lSkip', p)) $('#lSkip', p).onclick = () => { q.answer = ''; finish(false); };
+  if ($('#lCont', p)) { $('#lCont', p).onclick = advance; if (!q.written || q.ok !== null) $('#lCont', p).focus(); }
+  if ($('#lOv', p)) $('#lOv', p).onclick = () => {
+    st.log.pop(); st.stage.set(c, stageOf(c) + 1); bump(c, true, ALPHA.learn); bump(c, true, 0.2); saveSets(set);
+    st.log.push({ round: st.roundNo, card: c, ok: true }); q.ok = true; q.why = ''; paneLearn(p, set);
+  };
+  if ($('#lEx', p)) $('#lEx', p).onclick = e => { e.target.disabled = true; explain($('#lExBox', p), set, { question: prompt, correct: expected, given: q.written ? (q.answer || "(didn't know)") : q.choices[q.answer][field], about: c.term }); };
+  if ($('#lSpeak', p)) $('#lSpeak', p).onclick = () => speak(prompt);
+  $('#lStar', p).onclick = () => { c.star = !c.star; if (!c.star) delete c.star; saveSets(set); paneLearn(p, set); };
+  keyHandler = e => {
+    if (q.ok === null && !q.written && /^[1-4]$/.test(e.key) && q.choices[+e.key - 1]) $(`[data-lo="${+e.key - 1}"]`, p).click();
+    else if (q.ok !== null && e.key === 'Enter') advance();
+  };
+  bindQuit();
+  function bindQuit() { $('#lQuit', p).onclick = () => { view.learn = null; paneLearn(p, set); }; }
+}
+function nextRound(st) {
+  const left = st.pool.filter(c => (st.stage.get(c) || 0) < 2)
+    .sort((a, b) => (st.stage.get(b) || 0) - (st.stage.get(a) || 0) || eff(a) - eff(b));
+  st.round = shuffle(left.slice(0, 7)); st.ri = 0; st.roundNo++; st.phase = 'ask'; st.q = null;
+}
+
 /* practice test */
 function paneTest(p, set) {
   const n = set.cards.length, nAI = set.questions.length;
   if (!n && !nAI) { p.innerHTML = empty('Add some terms or generate questions with AI to make a test.'); return bindEmpty(p); }
   const st = view.test;
   if (!st) {
-    const o = view.testOpt ||= { count: Math.min(20, nAI + n), ai: nAI > 0, mc: n >= 4, tf: n >= 2, written: n > 0 };
+    const o = view.testOpt ||= { count: Math.min(20, nAI + n), ai: nAI > 0, mc: n >= 4, tf: n >= 2, written: n > 0, star: false };
+    const nStar = set.cards.filter(c => c.star).length;
     p.innerHTML = `
       <div class="panel">
         <h2>Set up your test</h2>
@@ -734,12 +1041,13 @@ function paneTest(p, set) {
           <label class="check"><input type="checkbox" id="tMC" ${o.mc ? 'checked' : ''} ${n >= 4 ? '' : 'disabled'}> Multiple choice from flashcards ${n >= 4 ? '' : '(needs 4+ terms)'}</label>
           <label class="check"><input type="checkbox" id="tTF" ${o.tf ? 'checked' : ''} ${n >= 2 ? '' : 'disabled'}> True / false from flashcards ${n >= 2 ? '' : '(needs 2+ terms)'}</label>
           <label class="check"><input type="checkbox" id="tW" ${o.written ? 'checked' : ''} ${n ? '' : 'disabled'}> Written: see the definition, type the term</label>
+          <label class="check" style="margin-top:6px"><input type="checkbox" id="tStar" ${o.star && nStar ? 'checked' : ''} ${nStar ? '' : 'disabled'}> Only starred terms (${nStar})</label>
         </div>
         <button class="btn primary" id="start">Start test</button>
         <div class="status err" id="tErr"></div>
       </div>`;
     $('#start', p).onclick = () => {
-      Object.assign(o, { count: Math.max(1, parseInt($('#cnt', p).value) || 10), ai: $('#tAI', p).checked, mc: $('#tMC', p).checked, tf: $('#tTF', p).checked, written: $('#tW', p).checked });
+      Object.assign(o, { count: Math.max(1, parseInt($('#cnt', p).value) || 10), ai: $('#tAI', p).checked, mc: $('#tMC', p).checked, tf: $('#tTF', p).checked, written: $('#tW', p).checked, star: $('#tStar', p).checked });
       const qs = buildTest(set, o);
       if (!qs.length) { $('#tErr', p).textContent = 'Pick at least one question type.'; return; }
       view.test = newTestState(qs); paneTest(p, set); window.scrollTo(0, 0);
@@ -781,6 +1089,7 @@ function paneTest(p, set) {
         else if (ok) fb = `<div class="fb good">Correct.${exp}</div>`;
         else if (q.type === 'written') fb = `<div class="fb bad">Answer: <strong>${esc(q.answer)}</strong>.${ai?.why ? ' ' + esc(ai.why) : exp} <button class="btn sm" data-ov="${i}">I was right</button></div>`;
         else fb = `<div class="fb bad">${a == null ? 'Not answered.' : 'Incorrect.'}${exp}</div>`;
+        if (!ok && sample) fb += `<button class="btn sm" data-ex="${i}" style="margin-top:8px">Explain this</button><div class="exbox" id="ex${i}" hidden></div>`;
       }
       const label = { mc: 'Multiple choice', tf: 'True or false', written: 'Written' }[q.type];
       return `<div class="q ${st.done ? (ok ? 'right' : 'wrong') : ''}"><div class="qn">${i + 1} of ${st.qs.length} · ${label}</div><div class="qt">${esc(q.question)}</div>${body}${fb}</div>`;
@@ -793,6 +1102,10 @@ function paneTest(p, set) {
     $$(`[data-q="${i}"]`, p).forEach(x => x.classList.toggle('sel', x === b));
   });
   $$('[data-w]', p).forEach(inp => inp.oninput = () => st.answers[+inp.dataset.w] = inp.value);
+  $$('[data-ex]', p).forEach(b => b.onclick = () => {
+    const i = +b.dataset.ex, q = st.qs[i]; b.disabled = true;
+    explain($('#ex' + i, p), set, { question: q.question, correct: answerText(q), given: givenText(q, st.answers[i]), about: q.about });
+  });
   $$('[data-ov]', p).forEach(b => b.onclick = () => { st.override[+b.dataset.ov] = true; applyTest(set, st); paneTest(p, set); });
   if ($('#submit', p)) $('#submit', p).onclick = async () => {
     const missing = st.qs.length - st.qs.filter((q, i) => st.answers[i] != null && st.answers[i] !== '').length;
@@ -838,8 +1151,8 @@ function cardFor(set, q) {
 }
 // Re-runnable: an "I was right" override restores the snapshot and applies the results again.
 function applyTest(set, st) {
-  if (st.snap) st.snap.forEach(([c, s]) => { if (s === undefined) delete c.s; else c.s = s; });
-  else st.snap = set.cards.map(c => [c, c.s]);
+  if (st.snap) st.snap.forEach(([c, s, t]) => { if (s === undefined) delete c.s; else c.s = s; if (t === undefined) delete c.t; else c.t = t; });
+  else st.snap = set.cards.map(c => [c, c.s, c.t]);
   const right = st.qs.filter((q, i) => isRight(st, q, i)).length;
   st.qs.forEach((q, i) => { const c = cardFor(set, q); if (c) bump(c, isRight(st, q, i), ALPHA.test); });
   set.tests ||= [];
@@ -872,7 +1185,7 @@ ${JSON.stringify(list, null, 1)}`, { modelTier: 'quick', cache: false });
 async function weakTest(set, st) {
   const missed = st.qs.map((q, i) => ({ q, i })).filter(({ q, i }) => !isRight(st, q, i))
     .map(({ q, i }) => ({ question: q.question, correct: answerText(q), student: givenText(q, st.answers[i]) }));
-  const weak = set.cards.slice().sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).slice(0, 8).map(c => c.term);
+  const weak = set.cards.slice().sort((a, b) => eff(a) - eff(b)).slice(0, 8).map(c => c.term);
   const n = Math.min(Math.max(st.qs.length, 8), 25);
   const cards = set.cards.map(c => `- ${c.term}: ${c.definition}`).join('\n').slice(0, 100000);
   const cats = set.categories.map(c => `- ${c.name}: ${c.items.join('; ')}`).join('\n');
@@ -903,8 +1216,8 @@ Reply with only JSON in this shape:
 }
 
 function buildTest(set, o) {
-  const cards = set.cards, out = [];
-  if (o.ai) out.push(...set.questions.map(q => ({ ...q })));
+  const cards = o.star ? set.cards.filter(c => c.star) : set.cards, out = [];
+  if (o.ai) out.push(...set.questions.filter(q => !o.star || cardFor(set, q)?.star).map(q => ({ ...q })));
   const types = [];
   if (o.mc && cards.length >= 4) types.push('mc');
   if (o.tf && cards.length >= 2) types.push('tf');
@@ -1040,7 +1353,8 @@ function paneCats(p, set) {
       if (!st.scored) {
         st.scored = true; st.before = readiness(set);
         const frac = st.items.filter((it, i) => st.at[i] === it.c).length / st.items.length;
-        set.catS = set.catS == null ? frac : +(set.catS + 0.5 * (frac - set.catS)).toFixed(3);
+        const prev = set.catS == null ? null : fade(set.catS, set.catT, 14);
+        set.catS = prev == null ? frac : +(prev + 0.5 * (frac - prev)).toFixed(3); set.catT = Date.now();
         saveSets(set);
       }
       draw();
@@ -1059,6 +1373,8 @@ function paneEdit(p, set) {
     p.innerHTML = `
       <div class="panel">
         <label class="field">Title <input type="text" id="eTitle" value="${esc(draft.title)}"></label>
+        <label class="field">Folder <span class="muted small">(optional, like a class name)</span> <input type="text" id="eFolder" list="folderList" value="${esc(draft.folder || '')}" placeholder="e.g. Biology"></label>
+        ${folderList()}
       </div>
       <div class="panel">
         <div class="row spread"><h2>Flashcards (${draft.cards.length})</h2><button class="btn sm" id="addTop">+ Add card</button></div>
@@ -1067,6 +1383,7 @@ function paneEdit(p, set) {
             <span class="num">${i + 1}</span>
             <textarea rows="2" data-f="term" data-i="${i}" placeholder="Term">${esc(c.term)}</textarea>
             <textarea rows="2" data-f="definition" data-i="${i}" placeholder="Definition">${esc(c.definition)}</textarea>
+            <button class="btn ghost sm star ${c.star ? 'on' : ''}" data-star="${i}" aria-label="Star card" aria-pressed="${!!c.star}">${c.star ? '★' : '☆'}</button>
             <button class="btn ghost sm" data-rm="${i}" aria-label="Remove card">✕</button>
           </div>`).join('')}</div>
         <button class="btn sm" id="add">+ Add card</button>
@@ -1089,6 +1406,8 @@ function paneEdit(p, set) {
         <button class="btn primary" id="save">Save</button>
       </div>`;
     $('#eTitle', p).oninput = e => draft.title = e.target.value;
+    $('#eFolder', p).oninput = e => draft.folder = e.target.value;
+    $$('[data-star]', p).forEach(b => b.onclick = () => { const c = draft.cards[+b.dataset.star]; c.star = !c.star; draw(); });
     $('#eCats', p).oninput = e => draft._cats = e.target.value;
     if (draft._cats != null) $('#eCats', p).value = draft._cats;
     $$('[data-f]', p).forEach(t => t.oninput = () => draft.cards[+t.dataset.i][t.dataset.f] = t.value);
@@ -1108,7 +1427,7 @@ function paneEdit(p, set) {
       }
       const clean = normalizeSet(draft);
       Object.assign(set, clean, { id: set.id });
-      saveSets(set); view.draft = null; view.fc = view.cat = view.match = view.test = null;
+      saveSets(set); view.draft = null; view.fc = view.cat = view.match = view.test = view.learn = null;
       toast('Saved'); render();
     };
   };
