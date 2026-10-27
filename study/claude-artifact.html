@@ -74,6 +74,7 @@
   .drop.over { border-color: var(--accent); background: var(--soft); }
   .status { min-height: 1.5em; font-size: .92rem; }
   .status.err { color: var(--bad); }
+  .status:empty { min-height: 0; }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 16px 0 18px; overflow-x: auto; }
   .tab { padding: 10px 14px; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
   .tab.on { color: var(--accent); border-bottom-color: var(--accent); }
@@ -105,7 +106,14 @@
   .tf { grid-template-columns: 1fr 1fr; }
   .fb { margin-top: 10px; font-size: .92rem; }
   .fb.good { color: var(--good); } .fb.bad { color: var(--bad); }
-  .score { font-size: 2.2rem; font-weight: 800; }
+  .score { font-size: 2.2rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; margin-bottom: 2px; }
+  .delta { font-size: 1rem; font-weight: 700; margin-left: 8px; vertical-align: middle; }
+  .delta.up { color: var(--good); } .delta.down { color: var(--bad); }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 99px; background: var(--soft); border: 1px solid var(--line); font-size: .85rem; margin: 2px 2px 2px 0; }
+  .ready .bar > div { background: var(--rcol, var(--accent)); }
+  .ready .bar { height: 8px; margin: 10px 0 12px; }
+  .stack { display: grid; gap: 0; }
 
   /* match */
   .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
@@ -488,8 +496,8 @@ Return ONLY a JSON object in exactly this shape:
   "cards": [{"term": "...", "definition": "..."}],
   "categories": [{"name": "...", "items": ["...", "..."]}],
   "questions": [
-    {"type": "mc", "question": "...", "choices": ["...", "...", "...", "..."], "answer": 0, "explanation": "..."},
-    {"type": "tf", "question": "a statement that is true or false", "answer": true, "explanation": "..."}
+    {"type": "mc", "question": "...", "choices": ["...", "...", "...", "..."], "answer": 0, "explanation": "...", "about": "the card term this tests"},
+    {"type": "tf", "question": "a statement that is true or false", "answer": true, "explanation": "...", "about": "the card term this tests"}
   ]
 }
 
@@ -521,24 +529,60 @@ function aiError(e) {
 function normalizeSet(d) {
   const str = v => (typeof v === 'string' || typeof v === 'number') ? String(v).trim() : '';
   const cards = (Array.isArray(d.cards) ? d.cards : [])
-    .map(c => ({ term: str(c?.term), definition: str(c?.definition), known: !!c?.known }))
+    .map(c => ({ term: str(c?.term), definition: str(c?.definition), known: !!c?.known, ...(typeof c?.s === 'number' ? { s: c.s } : {}) }))
     .filter(c => c.term && c.definition);
   const categories = (Array.isArray(d.categories) ? d.categories : [])
     .map(c => ({ name: str(c?.name), items: [...new Set((Array.isArray(c?.items) ? c.items : []).map(str).filter(Boolean))] }))
     .filter(c => c.name && c.items.length);
-  const questions = (Array.isArray(d.questions) ? d.questions : []).map(q => {
-    if (!q || !str(q.question)) return null;
-    if (q.type === 'tf') {
-      const ans = q.answer === true || String(q.answer).toLowerCase() === 'true';
-      return { type: 'tf', question: str(q.question), answer: ans, explanation: str(q.explanation) };
-    }
-    const choices = (Array.isArray(q.choices) ? q.choices : []).map(str).filter(Boolean);
-    let ans = Number(q.answer);
-    if (!Number.isInteger(ans)) ans = choices.indexOf(str(q.answer));
-    if (choices.length < 2 || ans < 0 || ans >= choices.length) return null;
-    return { type: 'mc', question: str(q.question), choices, answer: ans, explanation: str(q.explanation) };
-  }).filter(Boolean);
-  return { id: d.id, title: str(d.title) || 'Untitled set', cards, categories, questions, bestMatch: d.bestMatch || null, created: d.created || Date.now() };
+  const questions = (Array.isArray(d.questions) ? d.questions : []).map(normQuestion).filter(Boolean);
+  const tests = (Array.isArray(d.tests) ? d.tests : []).filter(t => t && typeof t.score === 'number').slice(-20);
+  return { id: d.id, title: str(d.title) || 'Untitled set', cards, categories, questions, tests, catS: typeof d.catS === 'number' ? d.catS : null,
+    bestMatch: d.bestMatch || null, created: d.created || Date.now() };
+}
+
+function normQuestion(q) {
+  const str = v => (typeof v === 'string' || typeof v === 'number') ? String(v).trim() : '';
+  if (!q || !str(q.question)) return null;
+  const base = { question: str(q.question), explanation: str(q.explanation), ...(str(q.about) ? { about: str(q.about) } : {}) };
+  if (q.type === 'tf') return { type: 'tf', ...base, answer: q.answer === true || String(q.answer).toLowerCase() === 'true' };
+  if (q.type === 'written') return str(q.answer) ? { type: 'written', ...base, answer: str(q.answer) } : null;
+  const choices = (Array.isArray(q.choices) ? q.choices : []).map(str).filter(Boolean);
+  let ans = Number(q.answer);
+  if (!Number.isInteger(ans)) ans = choices.indexOf(str(q.answer));
+  if (choices.length < 2 || ans < 0 || ans >= choices.length) return null;
+  return { type: 'mc', ...base, choices, answer: ans };
+}
+
+/* ---------- readiness ---------- */
+// Each card carries a mastery value `s` (0-1) that moves toward 1 on a right answer and
+// toward 0 on a wrong one. Tests move it most, flashcard self-ratings less, Match least.
+const ALPHA = { test: 0.45, card: 0.25, match: 0.15 };
+function bump(card, ok, a) { const s = card.s ?? 0.3; card.s = +(s + a * ((ok ? 1 : 0) - s)).toFixed(3); }
+function readiness(set) {
+  const parts = [];
+  if (set.cards.length) parts.push([set.cards.reduce((t, c) => t + (c.s ?? 0), 0) / set.cards.length, 0.55]);
+  const recent = (set.tests || []).slice(-3);
+  if (recent.length) parts.push([recent.reduce((t, x) => t + x.score, 0) / recent.length, 0.35]);
+  if (set.categories.length && set.catS != null) parts.push([set.catS, 0.1]);
+  if (!parts.length) return null;
+  let r = parts.reduce((t, [v, w]) => t + v * w, 0) / parts.reduce((t, [, w]) => t + w, 0) * 100;
+  if (!recent.length) r = Math.min(r, 80);
+  return Math.round(r);
+}
+function readinessPanel(set, before) {
+  const r = readiness(set);
+  if (r == null) return '';
+  const [label, col] = r >= 85 ? ['Ready for the test', 'var(--good)'] : r >= 70 ? ['Almost ready', 'var(--accent)'] : r >= 50 ? ['Getting there', 'var(--mark)'] : ['Not ready yet', 'var(--bad)'];
+  const d = before == null ? 0 : r - before;
+  const weak = set.cards.filter(c => (c.s ?? 0) < 0.7).sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).slice(0, 5);
+  return `<div class="panel ready" style="--rcol:${col}">
+    <div class="eyebrow">Test readiness</div>
+    <div class="score">${r}%${d ? `<span class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${d}</span>` : ''}</div>
+    <div class="muted">${label}${(set.tests || []).length ? '' : '. Take a practice test to go above 80%.'}</div>
+    <div class="bar"><div style="width:${r}%"></div></div>
+    ${weak.length ? `<div class="small"><strong>Work on:</strong> ${weak.map(c => `<span class="pill">${esc(c.term)}</span>`).join('')}</div>`
+      : '<div class="small muted">No weak terms right now.</div>'}
+  </div>`;
 }
 
 /* ---------- set view ---------- */
@@ -548,7 +592,7 @@ function renderSet() {
   if (!set) return go({ name: 'home' });
   app.innerHTML = `
     <div class="row spread">
-      <div><h1>${esc(set.title)}</h1><div class="muted small">${set.cards.length} terms · ${set.questions.length} AI questions · ${set.categories.length} categories</div></div>
+      <div><h1>${esc(set.title)}</h1><div class="muted small">${set.cards.length} terms · ${set.questions.length} AI questions · ${set.categories.length} categories${readiness(set) != null ? ` · <strong>Readiness ${readiness(set)}%</strong>` : ''}</div></div>
       <div class="row">
         <button class="btn sm" id="exp">Export</button>
         <button class="btn sm bad" id="del">Delete</button>
@@ -576,13 +620,21 @@ function bindEmpty(p) { const b = $('[data-goedit]', p); if (b) b.onclick = () =
 /* flashcards */
 function paneCards(p, set) {
   if (!set.cards.length) { p.innerHTML = empty('This set has no flashcards yet.'); return bindEmpty(p); }
-  const st = view.fc ||= { order: set.cards.map((_, i) => i), pos: 0, flipped: false, only: false, defFirst: false };
+  const st = view.fc ||= { order: set.cards.map((_, i) => i), pos: 0, flipped: false, only: false, defFirst: false, before: readiness(set) };
   const draw = () => {
     const order = st.only ? st.order.filter(i => !set.cards[i].known) : st.order;
     const known = set.cards.filter(c => c.known).length;
-    if (!order.length) {
-      p.innerHTML = `<div class="panel empty"><h2>You know all ${set.cards.length} terms</h2><p>Nice. Reset to go through them again.</p><button class="btn primary" id="reset">Reset progress</button></div>`;
-      $('#reset', p).onclick = () => { set.cards.forEach(c => c.known = false); saveSets(set); st.pos = 0; draw(); };
+    if (!order.length || st.roundDone) {
+      p.innerHTML = `<div class="panel empty"><h2>${order.length ? 'Round done' : `You marked all ${set.cards.length} terms as known`}</h2>
+        <p>${known} known · ${set.cards.length - known} still learning</p>
+        <div class="row" style="justify-content:center">
+          ${known < set.cards.length ? '<button class="btn" id="onlyL">Study the still-learning cards</button>' : '<button class="btn" id="reset">Reset known cards</button>'}
+          <button class="btn primary" id="again">Go again</button>
+        </div></div>${readinessPanel(set, st.before)}`;
+      const restart = only => { Object.assign(st, { roundDone: false, pos: 0, flipped: false, only, before: readiness(set) }); draw(); };
+      if ($('#onlyL', p)) $('#onlyL', p).onclick = () => restart(true);
+      if ($('#reset', p)) $('#reset', p).onclick = () => { set.cards.forEach(c => c.known = false); saveSets(set); restart(false); };
+      $('#again', p).onclick = () => restart(st.only && known < set.cards.length);
       return;
     }
     st.pos = Math.min(st.pos, order.length - 1);
@@ -613,9 +665,9 @@ function paneCards(p, set) {
     const flip = () => { st.flipped = !st.flipped; flash.classList.toggle('flipped', st.flipped); };
     const move = d => { st.pos = (st.pos + d + order.length) % order.length; st.flipped = false; draw(); };
     const mark = k => {
-      c.known = k; saveSets(set); st.flipped = false;
+      c.known = k; bump(c, k, ALPHA.card); saveSets(set); st.flipped = false;
       if (!(st.only && k)) st.pos++;
-      if (st.pos >= (st.only ? st.order.filter(i => !set.cards[i].known).length : order.length)) st.pos = 0;
+      if (st.pos >= (st.only ? st.order.filter(i => !set.cards[i].known).length : order.length)) { st.pos = 0; st.roundDone = true; }
       draw();
     };
     flash.onclick = flip;
@@ -659,21 +711,25 @@ function paneTest(p, set) {
       Object.assign(o, { count: Math.max(1, parseInt($('#cnt', p).value) || 10), ai: $('#tAI', p).checked, mc: $('#tMC', p).checked, tf: $('#tTF', p).checked, written: $('#tW', p).checked });
       const qs = buildTest(set, o);
       if (!qs.length) { $('#tErr', p).textContent = 'Pick at least one question type.'; return; }
-      view.test = { qs, answers: [], done: false, override: {} }; paneTest(p, set); window.scrollTo(0, 0);
+      view.test = newTestState(qs); paneTest(p, set); window.scrollTo(0, 0);
     };
     return;
   }
+  if (st.grading) {
+    p.innerHTML = '<div class="panel empty"><p><span class="spin"></span> Claude is checking your written answers...</p></div>';
+    return;
+  }
 
-  const grade = (q, i) => {
-    const a = st.answers[i];
-    if (st.override[i]) return true;
-    if (q.type === 'written') return a != null && looseMatch(a, q.answer);
-    return a === q.answer;
-  };
+  const grade = (q, i) => isRight(st, q, i);
   const right = st.done ? st.qs.filter(grade).length : 0;
+  const missed = st.qs.length - right;
   p.innerHTML = `
-    ${st.done ? `<div class="panel row spread"><div><div class="score">${Math.round(right / st.qs.length * 100)}%</div><div class="muted">${right} of ${st.qs.length} correct</div></div>
-      <div class="row"><button class="btn" id="retake">Retake</button><button class="btn primary" id="newTest">New test</button></div></div>` : ''}
+    ${st.weak && !st.done ? '<div class="panel"><div class="eyebrow">Weak-spot test</div>Claude wrote these questions around what you missed last time and your weakest terms.</div>' : ''}
+    ${st.done ? `<div class="panel row spread"><div><div class="eyebrow">${st.weak ? 'Weak-spot test' : 'Practice test'}</div><div class="score">${Math.round(right / st.qs.length * 100)}%</div><div class="muted">${right} of ${st.qs.length} correct</div></div>
+      <div class="row"><button class="btn" id="retake">Retake</button><button class="btn" id="newTest">New test</button>
+      ${sample ? `<button class="btn primary" id="weakTest">${missed ? 'Make a test on what I missed' : 'Make a harder test'}</button>` : ''}</div>
+      <div class="status err" id="weakErr" style="flex-basis:100%"></div></div>
+      ${readinessPanel(set, st.before)}` : ''}
     ${st.qs.map((q, i) => {
       const ok = st.done && grade(q, i), a = st.answers[i];
       let body = '';
@@ -685,12 +741,14 @@ function paneTest(p, set) {
         let cls = a === v ? 'sel' : '';
         if (st.done) cls = v === q.answer ? 'ok' : a === v ? 'no' : '';
         return `<button class="opt ${cls}" data-q="${i}" data-v="${v}" ${st.done ? 'disabled' : ''}>${v ? 'True' : 'False'}</button>`; }).join('')}</div>`;
-      else body = `<input type="text" data-w="${i}" value="${esc(a || '')}" placeholder="Type the term" ${st.done ? 'disabled' : ''} autocomplete="off">`;
+      else body = `<input type="text" data-w="${i}" value="${esc(a || '')}" placeholder="${q.src === 'card' ? 'Type the term' : 'Type your answer'}" ${st.done ? 'disabled' : ''} autocomplete="off">`;
       let fb = '';
       if (st.done) {
         const exp = q.explanation ? ' ' + esc(q.explanation) : '';
-        if (ok) fb = `<div class="fb good">Correct.${exp}</div>`;
-        else if (q.type === 'written') fb = `<div class="fb bad">Answer: <strong>${esc(q.answer)}</strong> <button class="btn sm" data-ov="${i}">I was right</button></div>`;
+        const ai = st.ai[i];
+        if (ok && q.type === 'written' && ai?.ok && !st.override[i]) fb = `<div class="fb good">Claude counted this as correct. ${esc(ai.why)} <span class="muted">Expected: ${esc(q.answer)}</span></div>`;
+        else if (ok) fb = `<div class="fb good">Correct.${exp}</div>`;
+        else if (q.type === 'written') fb = `<div class="fb bad">Answer: <strong>${esc(q.answer)}</strong>.${ai?.why ? ' ' + esc(ai.why) : exp} <button class="btn sm" data-ov="${i}">I was right</button></div>`;
         else fb = `<div class="fb bad">${a == null ? 'Not answered.' : 'Incorrect.'}${exp}</div>`;
       }
       const label = { mc: 'Multiple choice', tf: 'True or false', written: 'Written' }[q.type];
@@ -704,14 +762,113 @@ function paneTest(p, set) {
     $$(`[data-q="${i}"]`, p).forEach(x => x.classList.toggle('sel', x === b));
   });
   $$('[data-w]', p).forEach(inp => inp.oninput = () => st.answers[+inp.dataset.w] = inp.value);
-  $$('[data-ov]', p).forEach(b => b.onclick = () => { st.override[+b.dataset.ov] = true; paneTest(p, set); });
+  $$('[data-ov]', p).forEach(b => b.onclick = () => { st.override[+b.dataset.ov] = true; applyTest(set, st); paneTest(p, set); });
   if ($('#submit', p)) $('#submit', p).onclick = async () => {
     const missing = st.qs.length - st.qs.filter((q, i) => st.answers[i] != null && st.answers[i] !== '').length;
     if (missing && !await ask(`${missing} question${missing > 1 ? 's are' : ' is'} unanswered. Check anyway?`, 'Check answers')) return;
-    st.done = true; paneTest(p, set); window.scrollTo(0, 0);
+    st.done = true; st.before = readiness(set);
+    const toCheck = st.qs.map((q, i) => ({ q, i, a: st.answers[i] }))
+      .filter(x => x.q.type === 'written' && x.a && x.a.trim() && !looseMatch(x.a, x.q.answer));
+    if (sample && toCheck.length) {
+      st.grading = true; paneTest(p, set);
+      try { st.ai = await aiGrade(set, toCheck); }
+      catch (e) { toast(e?.code === 'rate_limited' ? 'Claude usage limit reached, so written answers used typo matching only.' : 'Could not reach Claude to check written answers. Typo matching was used.'); }
+      st.grading = false;
+    }
+    applyTest(set, st);
+    if (view.test === st) { paneTest(p, set); window.scrollTo(0, 0); }
   };
-  if ($('#retake', p)) $('#retake', p).onclick = () => { view.test = { qs: st.qs, answers: [], done: false, override: {} }; paneTest(p, set); window.scrollTo(0, 0); };
+  if ($('#retake', p)) $('#retake', p).onclick = () => { view.test = newTestState(st.qs, st.weak); paneTest(p, set); window.scrollTo(0, 0); };
   if ($('#newTest', p)) $('#newTest', p).onclick = () => { view.test = null; paneTest(p, set); };
+  if ($('#weakTest', p)) $('#weakTest', p).onclick = async () => {
+    const b = $('#weakTest', p); b.disabled = true; b.innerHTML = '<span class="spin"></span> Claude is writing your test...';
+    try {
+      const qs = await weakTest(set, st);
+      if (!qs.length) throw new Error('Claude did not return any usable questions. Try again.');
+      view.test = newTestState(qs, true); paneTest(p, set); window.scrollTo(0, 0);
+    } catch (e) {
+      b.disabled = false; b.textContent = 'Try again'; $('#weakErr', p).textContent = aiError(e);
+    }
+  };
+}
+
+function newTestState(qs, weak = false) { return { qs, answers: [], done: false, override: {}, ai: {}, weak }; }
+function isRight(st, q, i) {
+  const a = st.answers[i];
+  if (st.override[i]) return true;
+  if (q.type === 'written') return !!a && (looseMatch(a, q.answer) || !!st.ai[i]?.ok);
+  return a === q.answer;
+}
+function cardFor(set, q) {
+  const key = (q.about || '').toLowerCase();
+  if (key) { const c = set.cards.find(c => c.term.toLowerCase() === key); if (c) return c; }
+  const text = (q.question + ' ' + (q.type === 'written' ? q.answer : '')).toLowerCase();
+  return set.cards.find(c => c.term.length >= 3 && text.includes(c.term.toLowerCase())) || null;
+}
+// Re-runnable: an "I was right" override restores the snapshot and applies the results again.
+function applyTest(set, st) {
+  if (st.snap) st.snap.forEach(([c, s]) => { if (s === undefined) delete c.s; else c.s = s; });
+  else st.snap = set.cards.map(c => [c, c.s]);
+  const right = st.qs.filter((q, i) => isRight(st, q, i)).length;
+  st.qs.forEach((q, i) => { const c = cardFor(set, q); if (c) bump(c, isRight(st, q, i), ALPHA.test); });
+  set.tests ||= [];
+  const score = right / st.qs.length, prev = st.recAt && set.tests.find(t => t.at === st.recAt);
+  if (prev) prev.score = score;
+  else { st.recAt = Date.now(); set.tests.push({ at: st.recAt, score }); set.tests = set.tests.slice(-20); }
+  saveSets(set);
+}
+const answerText = q => q.type === 'mc' ? q.choices[q.answer] : q.type === 'tf' ? (q.answer ? 'True' : 'False') : q.answer;
+function givenText(q, a) {
+  if (a == null || a === '') return '(left blank)';
+  return q.type === 'mc' ? q.choices[a] : q.type === 'tf' ? (a ? 'True' : 'False') : a;
+}
+
+async function aiGrade(set, items) {
+  const list = items.map(x => ({ id: x.i, question: x.q.question, expected: x.q.answer, student: x.a.trim() }));
+  const res = await sample.json(`You are grading short written answers on a practice test about "${set.title}".
+For each item, decide whether the student's answer is correct. Count it as correct if it means the same thing as the expected answer: a synonym, a longer or shorter phrasing of the same idea (for example "polar molecules" for "polar"), singular vs plural, or a small spelling mistake. Count it as wrong if it names a different concept, is too vague to show they know it, or contradicts the expected answer.
+
+Reply with only a JSON array, one object per item, in the same order:
+[{"id": 0, "correct": true, "why": "one short sentence written to the student"}]
+
+Items:
+${JSON.stringify(list, null, 1)}`, { modelTier: 'quick', cache: false });
+  const out = {};
+  if (Array.isArray(res)) res.forEach(r => { if (r && Number.isInteger(Number(r.id))) out[Number(r.id)] = { ok: r.correct === true || r.correct === 'true', why: String(r.why || '').slice(0, 300) }; });
+  return out;
+}
+
+async function weakTest(set, st) {
+  const missed = st.qs.map((q, i) => ({ q, i })).filter(({ q, i }) => !isRight(st, q, i))
+    .map(({ q, i }) => ({ question: q.question, correct: answerText(q), student: givenText(q, st.answers[i]) }));
+  const weak = set.cards.slice().sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).slice(0, 8).map(c => c.term);
+  const n = Math.min(Math.max(st.qs.length, 8), 25);
+  const cards = set.cards.map(c => `- ${c.term}: ${c.definition}`).join('\n').slice(0, 100000);
+  const cats = set.categories.map(c => `- ${c.name}: ${c.items.join('; ')}`).join('\n');
+  const res = await sample.json(`You write a follow-up practice test for a student, aimed at their weak spots. Use only facts from the study set below. Write in plain, simple language.
+
+STUDY SET (term: definition):
+${cards}
+${cats ? `\nCATEGORIES:\n${cats}\n` : ''}
+QUESTIONS THEY GOT WRONG ON THEIR LAST TEST:
+${missed.length ? JSON.stringify(missed, null, 1) : '(none, they got everything right, so make this test harder)'}
+
+THEIR WEAKEST TERMS: ${weak.join(', ')}
+
+Write ${n} new questions.
+- About 70% target the missed questions and weakest terms. Ask about the same ideas from new angles (applying it, comparing it to a similar term, cause and effect). Do not reuse the old wording.
+- The rest check other terms so they keep them fresh.
+- Mix: about 50% "mc", 20% "tf", 30% "written". A written answer is a few words at most.
+- For "mc", "answer" is the 0-based index of the correct choice. Put it in a random position and make wrong choices believable.
+- "about" is the study set term the question tests, copied exactly.
+
+Reply with only JSON in this shape:
+{"questions": [
+  {"type": "mc", "question": "...", "choices": ["...", "...", "...", "..."], "answer": 0, "explanation": "one sentence", "about": "term"},
+  {"type": "tf", "question": "a true or false statement", "answer": true, "explanation": "one sentence", "about": "term"},
+  {"type": "written", "question": "...", "answer": "short expected answer", "explanation": "one sentence", "about": "term"}
+]}`, { cache: false });
+  return shuffle((Array.isArray(res?.questions) ? res.questions : []).map(normQuestion).filter(Boolean));
 }
 
 function buildTest(set, o) {
@@ -726,11 +883,11 @@ function buildTest(set, o) {
     const t = pick(types);
     if (t === 'mc') {
       const ch = shuffle([{ t: c.definition, ok: true }, ...shuffle(others).slice(0, 3).map(x => ({ t: x.definition }))]);
-      out.push({ type: 'mc', question: `What does "${c.term}" mean?`, choices: ch.map(x => x.t), answer: ch.findIndex(x => x.ok) });
+      out.push({ type: 'mc', src: 'card', about: c.term, question: `What does "${c.term}" mean?`, choices: ch.map(x => x.t), answer: ch.findIndex(x => x.ok) });
     } else if (t === 'tf') {
       const truth = Math.random() < 0.5;
-      out.push({ type: 'tf', question: `${c.term}: ${truth ? c.definition : pick(others).definition}`, answer: truth, explanation: truth ? '' : `${c.term} actually means: ${c.definition}` });
-    } else out.push({ type: 'written', question: c.definition, answer: c.term });
+      out.push({ type: 'tf', src: 'card', about: c.term, question: `${c.term}: ${truth ? c.definition : pick(others).definition}`, answer: truth, explanation: truth ? '' : `${c.term} actually means: ${c.definition}` });
+    } else out.push({ type: 'written', src: 'card', about: c.term, question: c.definition, answer: c.term });
   });
   return shuffle(out).slice(0, o.count);
 }
@@ -760,7 +917,7 @@ function paneMatch(p, set) {
       <button class="btn primary" id="go">Start game</button></div>`;
     $('#go', p).onclick = () => {
       const picked = shuffle(set.cards).slice(0, 6);
-      view.match = { tiles: shuffle(picked.flatMap((c, k) => [{ k, t: c.term }, { k, t: c.definition }])), sel: null, gone: new Set(), start: Date.now(), pen: 0, time: null };
+      view.match = { picked, missed: new Set(), before: readiness(set), tiles: shuffle(picked.flatMap((c, k) => [{ k, t: c.term }, { k, t: c.definition }])), sel: null, gone: new Set(), start: Date.now(), pen: 0, time: null };
       paneMatch(p, set);
     };
     return;
@@ -769,7 +926,7 @@ function paneMatch(p, set) {
     const best = set.bestMatch === st.time;
     p.innerHTML = `<div class="panel empty"><h2>${st.time.toFixed(1)} seconds</h2>
       <p>${best ? 'New best time!' : `Best time: ${set.bestMatch.toFixed(1)}s`}</p>
-      <button class="btn primary" id="again">Play again</button></div>`;
+      <button class="btn primary" id="again">Play again</button></div>${readinessPanel(set, st.before)}`;
     $('#again', p).onclick = () => { view.match = null; paneMatch(p, set); $('#go', p).click(); };
     return;
   }
@@ -791,11 +948,14 @@ function paneMatch(p, set) {
       if (st.gone.size === st.tiles.length) {
         clearInterval(timerId);
         st.time = (Date.now() - st.start) / 1000 + st.pen;
-        if (!set.bestMatch || st.time < set.bestMatch) { set.bestMatch = st.time; saveSets(set); }
+        if (!set.bestMatch || st.time < set.bestMatch) set.bestMatch = st.time;
+        st.picked.forEach((c, k) => bump(c, !st.missed.has(k), ALPHA.match));
+        saveSets(set);
         setTimeout(() => paneMatch(p, set), 300);
       }
     } else {
       st.pen += 1; a.classList.add('miss'); b.classList.add('miss');
+      st.missed.add(st.tiles[st.sel].k).add(st.tiles[i].k);
     }
     st.sel = null;
   });
@@ -815,7 +975,7 @@ function paneCats(p, set) {
     const right = st.items.filter((it, i) => st.at[i] === it.c).length;
     p.innerHTML = `
       ${st.checked ? `<div class="panel row spread"><div><div class="score">${right} / ${st.items.length}</div><div class="muted">${right === st.items.length ? 'All sorted correctly.' : 'Red items are in the wrong group.'}</div></div>
-        <div class="row">${right < st.items.length ? '<button class="btn" id="fix">Fix mistakes</button>' : ''}<button class="btn primary" id="again">Play again</button></div></div>`
+        <div class="row">${right < st.items.length ? '<button class="btn" id="fix">Fix mistakes</button>' : ''}<button class="btn primary" id="again">Play again</button></div></div>${readinessPanel(set, st.before)}`
       : `<p class="muted">Sort each item into the right group. Tap an item and then a group, or drag it.</p>`}
       <div class="pool" id="pool">${pool.length ? pool.map(chip).join('') : `<span class="muted small">${st.checked ? '' : 'All items placed.'}</span>`}</div>
       <div class="buckets">${set.categories.map((c, ci) => `
@@ -844,7 +1004,16 @@ function paneCats(p, set) {
     const pl = $('#pool', p);
     pl.ondragover = e => { if (!st.checked) e.preventDefault(); };
     pl.ondrop = e => { e.preventDefault(); const i = e.dataTransfer.getData('text/plain'); if (i !== '') { delete st.at[+i]; draw(); } };
-    if ($('#check', p)) $('#check', p).onclick = () => { st.checked = true; draw(); };
+    if ($('#check', p)) $('#check', p).onclick = () => {
+      st.checked = true;
+      if (!st.scored) {
+        st.scored = true; st.before = readiness(set);
+        const frac = st.items.filter((it, i) => st.at[i] === it.c).length / st.items.length;
+        set.catS = set.catS == null ? frac : +(set.catS + 0.5 * (frac - set.catS)).toFixed(3);
+        saveSets(set);
+      }
+      draw();
+    };
     if ($('#fix', p)) $('#fix', p).onclick = () => { st.items.forEach((it, i) => { if (st.at[i] !== it.c) delete st.at[i]; }); st.checked = false; draw(); };
     if ($('#again', p)) $('#again', p).onclick = () => { view.cat = null; paneCats(p, set); };
   };
@@ -880,7 +1049,7 @@ function paneEdit(p, set) {
         <div class="row spread"><h2>AI questions (${draft.questions.length})</h2></div>
         ${draft.questions.length ? draft.questions.map((q, i) => `
           <div class="row spread small" style="padding:8px 0;border-top:1px solid var(--line);flex-wrap:nowrap">
-            <span>${esc(q.question)} <span class="muted">→ ${esc(q.type === 'tf' ? (q.answer ? 'True' : 'False') : q.choices[q.answer])}</span></span>
+            <span>${esc(q.question)} <span class="muted">→ ${esc(answerText(q))}</span></span>
             <button class="btn ghost sm" data-rq="${i}" aria-label="Remove question">✕</button>
           </div>`).join('') : '<p class="muted small">None. Generate a set with AI to get written questions.</p>'}
       </div>
