@@ -240,7 +240,7 @@ $('#home').onclick = () => go({ name: 'home' });
 /* ---------- storage + Claude ---------- */
 // Sets live in this viewer's private database rows when the page runs on claude.ai,
 // with a copy in browser storage so the page opens instantly.
-let db = null, me = null, sample = null, sampleCaps = null, downloads = null, assets = null;
+let db = null, me = null, sample = null, sampleCaps = null, downloads = null, assets = null, mcp = null;
 // synced: id -> `updated` stamp the account has confirmed. deleted: ids removed here but not yet on the account.
 let synced = load('studyhall.synced', {}), deleted = load('studyhall.deleted', []);
 const pending = {}, running = {};
@@ -287,8 +287,8 @@ function syncAll() {
 }
 async function initClaude() {
   const use = n => window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null);
-  const [d, u, smp, dl, as] = await Promise.all([use('db'), use('user'), use('sample'), use('downloads'), use('assets')]);
-  sample = smp; downloads = dl; assets = as;
+  const [d, u, smp, dl, as, m] = await Promise.all([use('db'), use('user'), use('sample'), use('downloads'), use('assets'), use('mcp')]);
+  sample = smp; downloads = dl; assets = as; mcp = m;
   if (sample) sampleCaps = await sample.limits().catch(() => null);
   const id = u ? await u.id().catch(() => null) : null;
   if (d && id) {
@@ -439,6 +439,10 @@ function renderCreate() {
         <div class="muted small">PDF, Word (.docx), .txt, .md, .csv${sampleCaps?.images ? ', or photos of your notes' : ''}. You can add several.</div>
         <input type="file" id="file" multiple accept=".pdf,.docx,.txt,.md,.csv,.text${sampleCaps?.images ? ',' + sampleCaps.images.mediaTypes.join(',') : ''}" hidden>
       </div>
+      <div class="row" style="flex-wrap:nowrap;margin-top:12px">
+        <input type="text" id="link" inputmode="url" autocomplete="off" placeholder="Or paste a Google Docs, Slides, Sheets or Drive link">
+        <button class="btn" id="addLink">Add link</button>
+      </div>
       <div class="thumbs" id="thumbs"></div>
       <div class="status muted" id="fileStatus" style="margin:8px 0"></div>
       <label class="field">Material <span class="muted small">(uploaded text shows up here, or paste your own)</span>
@@ -510,6 +514,21 @@ function renderCreate() {
     }
     upd();
   }
+
+  const addLink = async () => {
+    const st = $('#fileStatus'), url = $('#link').value.trim();
+    if (!url) return;
+    st.className = 'status muted'; st.innerHTML = '<span class="spin"></span> Opening the link...';
+    try {
+      const { title, text } = await readLink(url);
+      src.value += (src.value.trim() ? '\n\n' : '') + text; upd();
+      if (!$('#title').value && title) $('#title').value = title;
+      st.className = 'status muted'; st.textContent = `Added ${title || 'the linked file'} (${text.length.toLocaleString()} characters)`;
+      $('#link').value = '';
+    } catch (e) { st.className = 'status err'; st.textContent = e.message; }
+  };
+  $('#addLink').onclick = addLink;
+  $('#link').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } };
 
   $('#manual').onclick = () => {
     const parsed = parsePlain(src.value);
@@ -633,6 +652,44 @@ async function extractText(f) {
   }
   if (name.endsWith('.doc')) throw new Error('Old .doc files are not supported. Save it as .docx or PDF first.');
   return f.text();
+}
+
+/* ---------- links ---------- */
+// The page can't fetch websites itself, so links go through the viewer's Google Drive connector,
+// which reads Docs, Slides, Sheets, PDFs and Word files stored in Drive.
+function driveId(url) {
+  let u; try { u = new URL(url); } catch { return null; }
+  if (!/(^|\.)google\.com$/.test(u.hostname)) return null;
+  return u.pathname.match(/\/d\/([\w-]{10,})/)?.[1] || u.searchParams.get('id');
+}
+function textOf(result) {
+  const p = result?.payload;
+  if (typeof p === 'string' && p.trim()) return p;
+  const blocks = (result?.content || []).filter(b => b.type === 'text').map(b => b.text);
+  if (blocks.join('').trim()) return blocks.join('\n');
+  const out = [];
+  (function walk(v) { if (typeof v === 'string') out.push(v); else if (v && typeof v === 'object') Object.values(v).forEach(walk); })(p);
+  return out.join('\n');
+}
+async function readLink(url) {
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  const id = driveId(url);
+  if (!id) throw new Error('This page can only open Google Docs, Slides, Sheets and Drive links. For other websites, copy the text from the page and paste it in the box below.');
+  if (!mcp) throw new Error('Links need this page open on claude.ai with your Google Drive connected. You can still copy the text and paste it below.');
+  let res;
+  try { res = await mcp.callTool('Google Drive', 'read_file_content', { fileId: id }); }
+  catch (e) {
+    throw new Error({
+      server_not_connected: 'Connect Google Drive first: in claude.ai go to Settings, then Connectors, then add Google Drive. Then try the link again.',
+      not_granted: 'This page was not allowed to use Google Drive. Allow it from the page\'s permissions and try again.',
+      approval_required: 'Approve the Google Drive request that popped up, then try again.',
+      tool_error: 'Google Drive could not open that file. Make sure the link is right and your Google account can open it.',
+      blocked_by_policy: 'Your organization blocks Google Drive here. Copy the text and paste it below instead.'
+    }[e?.code] || 'Could not read that link right now. Try again, or copy the text and paste it below.');
+  }
+  const text = textOf(res).trim();
+  if (!text) throw new Error('That file came back empty. If it\'s a scan or picture, download it and upload it above instead.');
+  return { title: '', text };
 }
 
 /* ---------- plain-text parsing (no AI) ---------- */
