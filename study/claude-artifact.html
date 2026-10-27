@@ -200,7 +200,6 @@
 
 <script>
 const LS_SETS = 'studyhall.sets';
-const MAX_CHARS = 150000;
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -453,10 +452,10 @@ function renderCreate() {
     <div class="panel">
       <h2>${target ? 'What to add' : 'What to make'}</h2>
       <div class="row" style="gap:16px">
-        <label class="field" style="flex:1;min-width:150px">Flashcards
-          <select id="nCards"><option ${target ? 'selected' : ''}>10</option><option ${target ? '' : 'selected'}>20</option><option>30</option><option>50</option></select></label>
-        <label class="field" style="flex:1;min-width:150px">Test questions
-          <select id="nQs"><option ${target ? 'selected' : ''}>10</option><option ${target ? '' : 'selected'}>15</option><option>25</option><option>40</option></select></label>
+        <label class="field" style="flex:1;min-width:220px">Flashcards
+          <select id="nCards"><option value="auto" selected>Let AI decide: enough to cover all my notes</option>${[10, 20, 30, 50, 75, 100, 150, 200, 300].map(n => `<option>${n}</option>`).join('')}</select></label>
+        <label class="field" style="flex:1;min-width:220px">Test questions
+          <select id="nQs"><option value="auto" selected>Let AI decide: enough to cover all my notes</option>${[10, 15, 25, 40, 60, 80, 100, 150].map(n => `<option>${n}</option>`).join('')}</select></label>
         <label class="field" style="flex:1;min-width:150px">Category groups
           <select id="nCats"><option value="0">None</option><option value="auto" selected>Let the AI decide</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
       </div>
@@ -475,7 +474,11 @@ function renderCreate() {
     $('#thumbs').innerHTML = images.map((b, i) => `<figure><img src="${URL.createObjectURL(b)}" alt="Page ${i + 1}"><button data-x="${i}" aria-label="Remove">✕</button></figure>`).join('');
     $$('[data-x]').forEach(b => b.onclick = () => { images.splice(+b.dataset.x, 1); drawThumbs(); });
   };
-  const upd = () => $('#count').textContent = src.value.length.toLocaleString() + ' characters';
+  const upd = () => {
+    const n = src.value.trim().length, parts = n ? planParts(src.value.trim(), $('#nCards').value, $('#nQs').value).length : 0;
+    $('#count').textContent = `${n.toLocaleString()} characters (about ${Math.round(n / 6).toLocaleString()} words)` + (parts > 1 ? `. Claude will work through it in ${parts} parts.` : '');
+  };
+  $('#nCards').onchange = $('#nQs').onchange = upd;
   src.oninput = upd;
   drop.onclick = () => file.click();
   drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
@@ -542,25 +545,28 @@ function renderCreate() {
   };
 
   $('#gen').onclick = async () => {
-    const st = $('#genStatus');
-    let text = src.value.trim();
+    const st = $('#genStatus'), btn = $('#gen');
+    const text = src.value.trim();
     if (text.length < 40 && !images.length) { st.className = 'status err'; st.textContent = 'Add more material first.'; return; }
-    let note = '';
-    if (text.length > MAX_CHARS) { text = text.slice(0, MAX_CHARS); note = ` Only the first ${MAX_CHARS.toLocaleString()} characters were used.`; }
-    const btn = $('#gen'); btn.disabled = true;
-    st.className = 'status muted'; st.innerHTML = '<span class="spin"></span> Claude is reading your material. This can take a minute or two...';
-    try {
-      const data = await sample.json(buildPrompt(text || '(see the attached images)', $('#nCards').value, $('#nQs').value, $('#nCats').value, images.length, target),
-        { cache: false, ...(images.length ? { images } : {}) });
-      await attachImages(data, images, st);
-      const set = normalizeSet({ ...data, title: $('#title').value || data.title, folder: $('#folder').value });
-      if (!set.cards.length && !set.questions.length) throw new Error('The AI sent back nothing usable. Try again.');
-      if (note) toast(note.trim());
-      if (target) { if (!getSet(target.id)) throw new Error('That set was deleted.'); return addToSet(target, set); }
-      finishSet(set);
-    } catch (err) {
-      st.className = 'status err'; st.textContent = aiError(err); btn.disabled = false;
+    if (genJob) { st.className = 'status err'; st.textContent = 'Claude is still working on another set. Wait for it to finish or stop it first.'; return; }
+    btn.disabled = true; $('#manual').disabled = true;
+    const set = target || normalizeSet({ title: $('#title').value.trim(), folder: $('#folder').value.trim() });
+    if (!target) { set.id = uid(); set.created = Date.now(); set.title = $('#title').value.trim(); }
+    const ctl = new AbortController();
+    const ui = {
+      signal: ctl.signal,
+      progress: text => progressLine($('#genStatus'), 'gen', text, ctl)
+    };
+    const res = await runGeneration({ set, isNew: !target, parts: planParts(text, $('#nCards').value, $('#nQs').value), images, nCats: $('#nCats').value, ui });
+    if (!res.saved) {
+      const el = $('#genStatus');
+      if (el) { el.className = 'status err'; el.textContent = res.message; btn.disabled = false; $('#manual').disabled = false; }
+      else toast(res.message);
+      return;
     }
+    toast(res.message);
+    if (view.name === 'create') go({ name: 'set', id: set.id, tab: 'cards' });
+    else if (view.name === 'set' && view.id === set.id) render();
   };
 }
 
@@ -586,7 +592,7 @@ async function attachImages(data, images, st) {
   [...(data.cards || []), ...(data.questions || [])].forEach(x => { const n = refOf(x); if (n && ids[n]) x.img = ids[n]; });
 }
 
-function addToSet(set, add) {
+function mergeInto(set, add) {
   const have = new Set(set.cards.map(c => c.term.toLowerCase()));
   const cards = add.cards.filter(c => !have.has(c.term.toLowerCase()) && have.add(c.term.toLowerCase()));
   set.cards.push(...cards);
@@ -597,6 +603,10 @@ function addToSet(set, add) {
   const haveQ = new Set(set.questions.map(q => q.question.toLowerCase()));
   const qs = (add.questions || []).filter(q => !haveQ.has(q.question.toLowerCase()));
   set.questions.push(...qs);
+  return [cards.length, qs.length];
+}
+function addToSet(set, add) {
+  const [nc, nq] = mergeInto(set, add), cards = { length: nc }, qs = { length: nq };
   saveSets(set);
   toast(cards.length || qs.length ? `Added ${cards.length} new term${cards.length === 1 ? '' : 's'} and ${qs.length} question${qs.length === 1 ? '' : 's'}` : 'Nothing new found. Everything was already in the set.');
   go({ name: 'set', id: set.id, tab: 'cards' });
@@ -708,16 +718,54 @@ function parsePlain(text) {
 }
 
 /* ---------- AI ---------- */
-function buildPrompt(text, nCards, nQs, nCats, nImages = 0, existing = null) {
-  const catRule = nCats === '0' ? 'Return "categories": [].'
-    : `Make ${nCats === 'auto' ? '2 to 5' : nCats} categories. Each has 3 to 8 short items (a word or short phrase) that clearly belong to that category and no other. Group by whatever divides the material best (types, time periods, causes vs effects, people vs events, etc).`;
-  return `You turn a student's study material into study tools. Use only facts from the material. Write in plain, simple language.${nImages ? ` The student also attached ${nImages} image(s) of their notes or pages; read them as part of the material.` : ''}
+/* Long notes are split into parts and each part gets its own Claude call, so no single answer
+   gets long enough to be cut off. Categories are made once at the end from all the terms. */
+const PART_CHARS = 12000, PER_PART = { cards: 30, qs: 20 };
+const SET_BYTES_MAX = 200000;   // account documents cap at 256 KiB
+let genJob = null;
+
+function splitText(text, parts) {
+  const size = Math.ceil(text.length / parts), out = [];
+  let i = 0;
+  while (i < text.length) {
+    let end = Math.min(text.length, i + size);
+    if (end < text.length) {
+      const cut = Math.max(text.lastIndexOf('\n\n', end), text.lastIndexOf('\n', end), text.lastIndexOf('. ', end));
+      if (cut > i + size * 0.6) end = cut + 1;
+    }
+    out.push(text.slice(i, end).trim()); i = end;
+  }
+  return out.filter(Boolean);
+}
+// Split the notes and share any fixed card/question counts across the parts by length.
+function planParts(text, nCards, nQs) {
+  const auto = v => v === 'auto';
+  let parts = Math.max(1, Math.ceil(text.length / PART_CHARS));
+  if (!auto(nCards)) parts = Math.max(parts, Math.ceil(+nCards / PER_PART.cards));
+  if (!auto(nQs)) parts = Math.max(parts, Math.ceil(+nQs / PER_PART.qs));
+  parts = Math.min(parts, Math.max(1, Math.floor(text.length / 1500)) || 1);
+  const chunks = text ? splitText(text, parts) : [''];
+  const len = chunks.reduce((t, c) => t + c.length, 0) || 1;
+  let cum = 0;
+  return chunks.map(c => {
+    const a = cum; cum += c.length;
+    const share = n => auto(n) ? 'auto' : Math.round(+n * cum / len) - Math.round(+n * a / len);
+    return { text: c, cards: share(nCards), qs: share(nQs) };
+  });
+}
+function partPrompt(part, i, n, terms, nImages) {
+  const cardRule = part.cards === 'auto'
+    ? `as many cards as it takes to cover every important term, person, date, fact and idea in this part, so someone who knows every card knows this part of the notes. Skip filler. At most ${PER_PART.cards + 10}.`
+    : part.cards > 0 ? `${part.cards} cards for the most important terms, people, dates and ideas in this part.` : 'none. Return "cards": [].';
+  const qRule = part.qs === 'auto'
+    ? `as many as it takes to test every main idea in this part, at most ${PER_PART.qs + 5}.`
+    : part.qs > 0 ? `${part.qs} questions.` : 'none. Return "questions": [].';
+  return `You turn a student's study material into study tools.${n > 1 ? ` The notes are long, so you are getting part ${i} of ${n}.` : ''} Use only facts from this material. Write in plain, simple language.${nImages ? ` The student also attached ${nImages} image(s) of their notes or pages; read them as part of the material.` : ''}
 
 Return ONLY a JSON object in exactly this shape:
 {
-  "title": "short title for this set",
+  "title": "short title for the whole set",
   "cards": [{"term": "...", "definition": "...", "image": 1}],
-  "categories": [{"name": "...", "items": ["...", "..."]}],
   "questions": [
     {"type": "mc", "question": "...", "choices": ["...", "...", "...", "..."], "answer": 0, "explanation": "...", "about": "the card term this tests"},
     {"type": "tf", "question": "a statement that is true or false", "answer": true, "explanation": "...", "about": "the card term this tests"}
@@ -725,23 +773,107 @@ Return ONLY a JSON object in exactly this shape:
 }
 
 Rules:
-- "cards": up to ${nCards} of the most important terms, people, dates or concepts. Definitions under 30 words. No duplicates.
-${nImages ? `- The ${nImages} attached image(s) are numbered 1 to ${nImages} in the order attached. When a card or question needs one of them to make sense (a diagram, map, chart, labeled figure, or a picture of the thing itself), add "image": its number. Questions can then say "in the picture" or ask what a labeled part is. Leave "image" out everywhere else, and never attach an image that is just a photo of written notes.` : '- Leave out "image".'}
-- ${catRule}
-${existing ? `- This material is being ADDED to an existing set. It already has these terms: ${existing.cards.map(c => c.term).join('; ').slice(0, 20000)}. Do not repeat them or make reworded copies. Only add cards, questions and category items that are new.${existing.categories.length ? ` Existing categories: ${existing.categories.map(c => c.name).join('; ')}. When a new item fits one, use that exact category name.` : ''}\n` : ''}- "questions": ${nQs} questions, about 70% "mc" and 30% "tf". For "mc", "answer" is the 0-based index of the correct choice, put the correct choice in a random position, and make wrong choices believable. Test understanding, not just wording. "explanation" is one sentence.
+- "cards": ${cardRule} Definitions under 30 words. No duplicates.
+${terms.length ? `- These terms already have cards, so don't repeat them or make reworded copies: ${terms.join('; ').slice(0, 15000)}\n` : ''}${nImages ? `- The ${nImages} attached image(s) are numbered 1 to ${nImages} in the order attached. When a card or question needs one of them to make sense (a diagram, map, chart, labeled figure, or a picture of the thing itself), add "image": its number. Questions can then say "in the picture" or ask what a labeled part is. Leave "image" out everywhere else, and never attach an image that is just a photo of written notes.` : '- Leave out "image".'}
+- "questions": ${qRule} About 70% "mc" and 30% "tf". For "mc", "answer" is the 0-based index of the correct choice, put the correct choice in a random position, and make wrong choices believable. Test understanding, not just wording. "explanation" is one sentence.
 
-MATERIAL:
+MATERIAL${n > 1 ? ` (part ${i} of ${n})` : ''}:
 """
-${text}
+${part.text || '(see the attached images)'}
 """`;
+}
+function catPrompt(set, nCats) {
+  const placed = new Set(set.categories.flatMap(c => c.items.map(x => x.toLowerCase())));
+  const terms = set.cards.filter(c => !placed.has(c.term.toLowerCase())).map(c => `- ${c.term}: ${c.definition.slice(0, 80)}`);
+  if (terms.length < 4) return null;
+  return `Group these study terms from "${set.title}" into ${nCats === 'auto' ? '2 to 6' : nCats} categories for a sorting game. Group by whatever divides them best (types, time periods, causes vs effects, people vs events, etc).
+${set.categories.length ? `The set already has these categories. Reuse an exact name when a term fits: ${set.categories.map(c => c.name).join('; ')}\n` : ''}Each item is the term itself. A term goes in at most one category and must clearly belong there. Leave out terms that don't fit any group. 3 to 10 items per category.
+
+Reply with only JSON: {"categories": [{"name": "...", "items": ["term", "term"]}]}
+
+Terms:
+${terms.join('\n').slice(0, 60000)}`;
+}
+
+// Works through the parts one at a time, saving after each, and keeps any unfinished
+// parts so the set page can offer to continue later.
+async function runGeneration({ set, isNew, parts, images = [], nCats = '0', ui }) {
+  genJob = { setId: set.id };
+  const queue = parts.slice(), leftover = [];
+  let total = queue.length, done = 0, stop = null, imagesUsed = !images.length, added = [0, 0];
+  const say = () => ui.progress(total > 1
+    ? `Claude is working on part ${done + 1} of ${total}. ${set.cards.length} cards and ${set.questions.length} questions so far.`
+    : 'Claude is reading your material. This can take a minute or two...');
+  while (queue.length) {
+    if (ui.signal.aborted) { stop = { code: 'cancelled' }; break; }
+    if (JSON.stringify(set).length > SET_BYTES_MAX) { stop = { code: 'full' }; break; }
+    const part = queue[0], withImages = !imagesUsed;
+    say();
+    try {
+      const data = await sample.json(partPrompt(part, done + 1, total, set.cards.map(c => c.term), withImages ? images.length : 0),
+        { cache: false, signal: ui.signal, ...(withImages ? { images } : {}) });
+      if (withImages) { await attachImages(data, images, { set innerHTML(h) { ui.progress('Saving pictures...'); } }); imagesUsed = true; }
+      if (!set.title && typeof data?.title === 'string') set.title = data.title.trim().slice(0, 120);
+      const got = mergeInto(set, normalizeSet(data || {}));
+      added = [added[0] + got[0], added[1] + got[1]];
+      queue.shift(); done++;
+      if (isNew && !getSet(set.id)) { if (!set.title) set.title = 'Untitled set'; sets.unshift(set); }
+      if (getSet(set.id)) saveSets(set);
+    } catch (e) {
+      if (e?.code === 'cancelled') { stop = e; break; }
+      if ((e?.code === 'invalid_json' || e?.code === 'prompt_too_large') && part.text.length > 3000 && !part.split) {
+        // The answer was cut off: try this part again as two halves.
+        const half = v => v === 'auto' ? 'auto' : Math.ceil(v / 2);
+        queue.splice(0, 1, ...splitText(part.text, 2).map(t => ({ text: t, cards: half(part.cards), qs: half(part.qs), split: true })));
+        total++; continue;
+      }
+      if (['rate_limited', 'session_expired', 'not_granted', 'sampling_disabled', 'capability_disabled', 'not_declared'].includes(e?.code)) { stop = e; break; }
+      leftover.push(queue.shift()); done++; stop = stop || e;
+    }
+  }
+  leftover.push(...queue.filter(p => p.text));
+  const blocked = ['rate_limited', 'session_expired', 'not_granted', 'sampling_disabled', 'cancelled'].includes(stop?.code);
+  if (getSet(set.id) && nCats !== '0' && !blocked) {
+    const prompt = catPrompt(set, nCats);
+    if (prompt) {
+      ui.progress('Sorting terms into categories...');
+      try { mergeInto(set, normalizeSet({ categories: (await sample.json(prompt, { cache: false, signal: ui.signal }))?.categories })); saveSets(set); }
+      catch {}
+    }
+  }
+  genJob = null;
+  if (!getSet(set.id)) return { saved: false, message: aiError(stop || new Error('Claude sent back nothing usable. Try again.')) };
+  setResume(set.id, leftover, nCats);
+  let message = `Added ${added[0]} cards and ${added[1]} questions.`;
+  if (leftover.length) message += stop?.code === 'full'
+    ? ` This set is full, so ${leftover.length} part${leftover.length > 1 ? 's' : ''} of your notes didn't fit. Make a second set for the rest.`
+    : ` ${leftover.length} part${leftover.length > 1 ? 's' : ''} of your notes still need${leftover.length > 1 ? '' : 's'} doing. Tap Continue on the set when you're ready.${stop && stop.code !== 'cancelled' ? ' (' + aiError(stop) + ')' : ''}`;
+  return { saved: true, message };
+}
+function progressLine(el, key, text, ctl) {
+  if (!el) return;
+  if (!$('#' + key + 'Msg', el)) {
+    el.className = 'status muted';
+    el.innerHTML = `<span class="spin"></span> <span id="${key}Msg"></span> <button class="btn sm" id="${key}Stop">Stop</button>`;
+    $('#' + key + 'Stop', el).onclick = e => { e.target.disabled = true; e.target.textContent = 'Stopping...'; ctl.abort(); };
+  }
+  $('#' + key + 'Msg', el).textContent = text;
+}
+const RESUME = 'studyhall.resume';
+function getResume(id) { const r = load(RESUME, {})[id]; return r?.parts?.length ? r : null; }
+function setResume(id, parts, nCats = '0') {
+  const all = load(RESUME, {});
+  if (parts?.length) all[id] = { nCats, parts: parts.map(({ text, cards, qs }) => ({ text, cards, qs })) }; else delete all[id];
+  try { localStorage.setItem(RESUME, JSON.stringify(all)); } catch { if (parts?.length) toast('The unfinished parts are too big to keep on this device. Add them later with "+ Add material".'); }
 }
 
 function aiError(e) {
   if (e instanceof Error) return e.message;
   return ({
     rate_limited: 'You hit your Claude usage limit for now. Try again later or use less material.',
-    prompt_too_large: 'That is too much material at once. Split it into smaller sets.',
-    invalid_json: 'Claude\'s answer came back incomplete. Try again, or ask for fewer cards and questions.',
+    prompt_too_large: 'That part of the notes was too big to send. Try again.',
+    invalid_json: 'Claude\'s answer came back incomplete. Try again.',
+    full: 'This set is full.',
     not_granted: 'This page was not allowed to use Claude. Allow it from the page\'s permissions to generate sets.',
     session_expired: 'Your claude.ai sign-in expired. Sign in again and retry.',
     image_rejected: 'One of the images could not be read. Try a different photo.',
@@ -879,11 +1011,24 @@ function renderSet() {
         <button class="btn sm bad" id="del">Delete</button>
       </div>
     </div>
+    ${getResume(set.id) && sample ? `<div class="panel row spread" id="resume"><div><strong>${getResume(set.id).parts.length} part${getResume(set.id).parts.length > 1 ? 's' : ''} of your notes ${getResume(set.id).parts.length > 1 ? "haven't" : "hasn't"} been turned into cards yet.</strong>
+      <div class="status muted" id="resumeStatus"></div></div>
+      <div class="row"><button class="btn ghost sm" id="resumeDrop">Skip them</button><button class="btn primary sm" id="resumeGo">Continue</button></div></div>` : ''}
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="tab ${view.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav>
     <section id="pane"></section>`;
   $$('[data-tab]').forEach(b => b.onclick = () => { if (b.dataset.tab !== view.tab) go({ name: 'set', id: set.id, tab: b.dataset.tab }); });
   $('#exam').onchange = e => { set.examDate = e.target.value; saveSets(set); render(); toast(set.examDate ? 'Test date saved' : 'Test date cleared'); };
   $('#addMat').onclick = () => go({ name: 'create', addTo: set.id });
+  if ($('#resumeDrop')) $('#resumeDrop').onclick = async () => { if (await ask('Skip the unfinished parts? You can still add them later with "+ Add material".', 'Skip')) { setResume(set.id, null); render(); } };
+  if ($('#resumeGo')) $('#resumeGo').onclick = async () => {
+    if (genJob) return toast('Claude is still working on another set.');
+    $('#resumeGo').disabled = $('#resumeDrop').disabled = true;
+    const ctl = new AbortController();
+    const r = getResume(set.id);
+    const res = await runGeneration({ set, parts: r.parts, nCats: r.nCats, ui: { signal: ctl.signal, progress: text => progressLine($('#resumeStatus'), 'resume', text, ctl) } });
+    toast(res.message);
+    if (view.name === 'set' && view.id === set.id) render();
+  };
   $('#exp').hidden = !downloads;
   $('#exp').onclick = async () => {
     const { id, ...rest } = set;
