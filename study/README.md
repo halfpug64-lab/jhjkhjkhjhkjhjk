@@ -28,3 +28,9 @@ Type one term per line, like `Mitochondria - makes ATP` (a colon, tab or `=` wor
 
 - Sets are saved in your browser. Use **Export** / **Import set** to back them up or share them.
 - Scanned PDFs (photos of pages) have no text layer, so they can't be read.
+
+## claude.ai version
+
+`claude-artifact.html` is the version published as a claude.ai artifact: https://claude.ai/artifact/1aufUWkpnQcGbFwmZwq6MX
+
+It runs on your Claude account instead of an API key and saves sets to your account so they show up on any device. It only works when opened on claude.ai.

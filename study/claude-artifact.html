@@ -1,0 +1,920 @@
+<title>Studyhall</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: sticky top bar, one centered study column; index-card surfaces on a cool paper ground. */
+  :root {
+    --bg: #f3f5f9; --panel: #ffffff; --ink: #18203a; --muted: #5d6680; --line: #dde2ec;
+    --accent: #2453d6; --accent-ink: #ffffff; --soft: #e8eefc; --mark: #ffe066;
+    --good: #12804a; --good-soft: #e1f4ea; --bad: #c22c46; --bad-soft: #fce7eb;
+    --shadow: 0 1px 2px rgba(20,30,60,.06), 0 4px 16px rgba(20,30,60,.06);
+    --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --body: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1220; --panel: #171c2e; --ink: #e7eaf5; --muted: #98a0ba; --line: #283049;
+      --accent: #7d9bff; --accent-ink: #0e1220; --soft: #1f2846; --mark: #e8c547;
+      --good: #4cc98a; --good-soft: #15382a; --bad: #ff7a90; --bad-soft: #42202a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1220; --panel: #171c2e; --ink: #e7eaf5; --muted: #98a0ba; --line: #283049;
+    --accent: #7d9bff; --accent-ink: #0e1220; --soft: #1f2846; --mark: #e8c547;
+    --good: #4cc98a; --good-soft: #15382a; --bad: #ff7a90; --bad-soft: #42202a;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+  h1, h2, .logo, .score, .timer { font-family: var(--display); }
+  h1, h2 { text-wrap: balance; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); }
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; }
+  .logo { font-weight: 800; font-size: 1.2rem; letter-spacing: -.02em; cursor: pointer; background: none; border: 0; color: var(--ink); padding: 0; }
+  .logo span { color: var(--accent); box-shadow: inset 0 -.2em 0 var(--mark); }
+  main { max-width: 900px; margin: 0 auto; padding-block: 24px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1 { font-size: 1.7rem; margin: 0 0 6px; letter-spacing: -.02em; }
+  h2 { font-size: 1.15rem; margin: 0 0 10px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: .88rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .spread { justify-content: space-between; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.ghost:hover { background: var(--soft); }
+  .btn.good { color: var(--good); border-color: var(--good); }
+  .btn.bad { color: var(--bad); border-color: var(--bad); }
+  .btn.sm { padding: 5px 10px; font-size: .85rem; }
+  input[type=text], input[type=password], input[type=number], textarea, select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit;
+  }
+  textarea { resize: vertical; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  label.field { display: block; font-weight: 600; font-size: .9rem; margin-bottom: 12px; }
+  label.field > * { margin-top: 5px; font-weight: 400; }
+  .check { display: inline-flex; gap: 6px; align-items: center; font-size: .92rem; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .setcard { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; cursor: pointer; color: var(--ink); font: inherit; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 4px; }
+  .setcard:hover { border-color: var(--accent); }
+  .setcard strong { font-size: 1.05rem; }
+  .setcard span { color: var(--muted); font-size: .85rem; }
+  .drop { border: 2px dashed var(--line); border-radius: 14px; padding: 26px 16px; text-align: center; cursor: pointer; background: var(--bg); }
+  .drop.over { border-color: var(--accent); background: var(--soft); }
+  .status { min-height: 1.5em; font-size: .92rem; }
+  .status.err { color: var(--bad); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 16px 0 18px; overflow-x: auto; }
+  .tab { padding: 10px 14px; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+  .tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+  .empty { text-align: center; padding: 40px 16px; color: var(--muted); }
+
+  /* flashcards */
+  .flash { display: block; width: 100%; height: 300px; perspective: 1200px; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: var(--ink); }
+  .flash .inner { position: relative; width: 100%; height: 100%; transition: transform .45s; transform-style: preserve-3d; }
+  .flash.flipped .inner { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: center; padding: 28px; font-size: 1.35rem; text-align: center; overflow: auto; white-space: pre-wrap; }
+  .face.back { transform: rotateY(180deg); font-size: 1.1rem; }
+  .face .lbl { position: absolute; top: 12px; left: 16px; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .fc-ctrl { display: grid; grid-template-columns: auto 1fr 1fr auto; gap: 10px; margin: 14px 0; }
+  .bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 8px 0 14px; }
+  .bar > div { height: 100%; background: var(--accent); transition: width .2s; }
+
+  /* test */
+  .q { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .q.right { border-color: var(--good); }
+  .q.wrong { border-color: var(--bad); }
+  .q .qn { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .q .qt { font-weight: 600; margin-bottom: 10px; white-space: pre-wrap; }
+  .opts { display: grid; gap: 8px; }
+  .opt { text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; cursor: pointer; }
+  .opt:hover { border-color: var(--accent); }
+  .opt.sel { border-color: var(--accent); background: var(--soft); }
+  .opt.ok { border-color: var(--good); background: var(--good-soft); }
+  .opt.no { border-color: var(--bad); background: var(--bad-soft); }
+  .tf { grid-template-columns: 1fr 1fr; }
+  .fb { margin-top: 10px; font-size: .92rem; }
+  .fb.good { color: var(--good); } .fb.bad { color: var(--bad); }
+  .score { font-size: 2.2rem; font-weight: 800; }
+
+  /* match */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .tile { min-height: 110px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font: inherit; font-size: .92rem; cursor: pointer; box-shadow: var(--shadow); transition: opacity .25s, transform .15s; overflow-wrap: anywhere; }
+  .tile.sel { border-color: var(--accent); background: var(--soft); }
+  .tile.miss { border-color: var(--bad); background: var(--bad-soft); animation: shake .3s; }
+  .tile.gone { opacity: 0; pointer-events: none; transform: scale(.9); }
+  @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  .timer { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.3rem; }
+
+  /* categories */
+  .pool { display: flex; flex-wrap: wrap; gap: 8px; min-height: 48px; padding: 12px; border: 1px dashed var(--line); border-radius: 12px; margin-bottom: 14px; }
+  .chip { padding: 7px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: .9rem; cursor: grab; }
+  .chip.sel { border-color: var(--accent); background: var(--soft); }
+  .chip.ok { border-color: var(--good); background: var(--good-soft); }
+  .chip.no { border-color: var(--bad); background: var(--bad-soft); }
+  .buckets { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .bucket { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 12px; min-height: 130px; cursor: pointer; }
+  .bucket.over, .bucket.target { border-color: var(--accent); }
+  .bucket h3 { margin: 0 0 8px; font-size: 1rem; }
+  .bucket .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* edit */
+  .cardrow { display: grid; grid-template-columns: 28px 1fr 1fr auto; gap: 8px; align-items: start; margin-bottom: 8px; }
+  .cardrow .num { color: var(--muted); padding-top: 10px; font-size: .85rem; text-align: right; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(10,12,25,.55); display: grid; place-items: center; z-index: 40; padding: 16px; }
+  .modal { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; padding: 22px; width: min(440px, 100%); box-shadow: var(--shadow); }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .thumbs figure { margin: 0; position: relative; }
+  .thumbs img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .thumbs button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; font-size: 12px; line-height: 1; padding: 0; }
+  .toast { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: .92rem; z-index: 50; max-width: calc(100vw - 32px); }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rot .8s linear infinite; vertical-align: -2px; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  @media (max-width: 600px) {
+    .fc-ctrl { grid-template-columns: 1fr 1fr; }
+    .fc-ctrl #prev { order: 3; } .fc-ctrl #next { order: 4; }
+    .cardrow { grid-template-columns: 1fr 1fr auto; gap: 6px; }
+    .cardrow .num { display: none; }
+    .flash { height: 260px; }
+    .face { font-size: 1.15rem; }
+  }
+</style>
+<header class="top">
+  <button class="logo" id="home">Study<span>hall</span></button>
+  <span class="muted small" id="saveNote"></span>
+</header>
+<main id="app"></main>
+
+<script>
+const LS_SETS = 'studyhall.sets';
+const MAX_CHARS = 150000;
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const app = $('#app');
+
+function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
+function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { toast('Could not save. Browser storage may be full or blocked.'); } }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 3200);
+}
+
+let sets = load(LS_SETS, []);
+let view = { name: 'home' };
+let timerId = null;
+let keyHandler = null;
+
+const saveSets = s => { store(LS_SETS, sets); if (s) persist(s); };
+const getSet = id => sets.find(s => s.id === id);
+
+function go(v) { view = v; render(); window.scrollTo(0, 0); }
+function render() {
+  clearInterval(timerId); timerId = null; keyHandler = null;
+  ({ home: renderHome, create: renderCreate, set: renderSet })[view.name]();
+}
+
+document.addEventListener('keydown', e => {
+  if (!keyHandler || e.target.closest('input,textarea,select,dialog')) return;
+  keyHandler(e);
+});
+$('#home').onclick = () => go({ name: 'home' });
+
+/* ---------- storage + Claude ---------- */
+// Sets live in this viewer's private database rows when the page runs on claude.ai,
+// with a copy in browser storage so the page opens instantly.
+let db = null, me = null, sample = null, sampleCaps = null, downloads = null;
+const pending = {}, running = {};
+const setsPath = () => `data/users/${me}/sets`;
+function persist(s, del = false) {
+  if (!db) return;
+  const body = del ? null : JSON.parse(JSON.stringify(s));
+  if (body) delete body.id;
+  pending[s.id] = { body };
+  if (running[s.id]) return;
+  running[s.id] = (async () => {
+    while (pending[s.id]) {
+      const { body } = pending[s.id]; delete pending[s.id];
+      try {
+        const ref = db.doc(`${setsPath()}/${s.id}`);
+        body ? await ref.set(body) : await ref.delete();
+      } catch (e) {
+        toast(e?.code === 'quota_exceeded' ? 'Storage is full. Delete a set you no longer need.' : 'Could not save to your account. Your changes are kept in this browser.');
+      }
+    }
+    delete running[s.id];
+  })();
+}
+async function initClaude() {
+  const use = n => window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null);
+  [sample, downloads] = await Promise.all([use('sample'), use('downloads')]);
+  if (sample) sampleCaps = await sample.limits().catch(() => null);
+  const [d, u] = await Promise.all([use('db'), use('user')]);
+  const id = u ? await u.id().catch(() => null) : null;
+  if (d && id) {
+    try {
+      const snap = await d.collection(`data/users/${id}/sets`).get();
+      db = d; me = id;
+      if (snap.empty) sets.forEach(s => persist(s));
+      else {
+        sets = snap.docs.map(x => normalizeSet({ ...x.data(), id: x.id })).sort((a, b) => b.created - a.created);
+        store(LS_SETS, sets);
+      }
+      $('#saveNote').textContent = 'Saved to your account';
+    } catch { $('#saveNote').textContent = 'Saved in this browser'; }
+  } else $('#saveNote').textContent = 'Saved in this browser';
+  if (view.name === 'create') refreshCreate();
+  else if (view.name === 'home' || (view.name === 'set' && !getSet(view.id))) render();
+}
+
+function ask(msg, ok = 'OK', danger = false) {
+  return new Promise(res => {
+    const o = document.createElement('div'); o.className = 'overlay';
+    o.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><p>${esc(msg)}</p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-a="0">Cancel</button><button class="btn ${danger ? 'bad' : 'primary'}" data-a="1">${esc(ok)}</button></div></div>`;
+    const done = v => { o.remove(); res(v); };
+    o.onclick = e => { if (e.target === o) done(false); const b = e.target.closest('[data-a]'); if (b) done(b.dataset.a === '1'); };
+    document.body.appendChild(o); $('[data-a="1"]', o).focus();
+  });
+}
+
+/* ---------- home ---------- */
+function renderHome() {
+  app.innerHTML = `
+    <div class="row spread" style="margin-bottom:18px">
+      <div>
+        <h1>Your study sets</h1>
+        <p class="muted">Upload notes, a PDF or a Word doc and get flashcards, practice tests, matching and category sorting.</p>
+      </div>
+      <div class="row">
+        <label class="btn">Import set<input type="file" id="imp" accept=".json,application/json" hidden></label>
+        <button class="btn primary" id="new">+ New set</button>
+      </div>
+    </div>
+    ${sets.length ? `<div class="grid">${sets.map(s => `
+      <button class="setcard" data-id="${s.id}">
+        <strong>${esc(s.title)}</strong>
+        <span>${s.cards.length} terms · ${s.questions.length} AI questions · ${s.categories.length} categories</span>
+      </button>`).join('')}</div>`
+    : `<div class="panel empty"><h2>No sets yet</h2><p>Make your first one from your notes.</p><button class="btn primary" id="new2">+ New set</button></div>`}`;
+  $$('[data-id]').forEach(b => b.onclick = () => go({ name: 'set', id: b.dataset.id, tab: 'cards' }));
+  $('#new').onclick = () => go({ name: 'create' });
+  if ($('#new2')) $('#new2').onclick = () => go({ name: 'create' });
+  $('#imp').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const s = normalizeSet(JSON.parse(await f.text()));
+      s.id = uid(); sets.unshift(s); saveSets(s); toast('Imported "' + s.title + '"'); render();
+    } catch { toast('That file is not a Studyhall set'); }
+  };
+}
+
+/* ---------- create ---------- */
+function renderCreate() {
+  app.innerHTML = `
+    <h1>New study set</h1>
+    <p class="muted">Add your material, then let the AI build the study tools. You can edit everything afterward.</p>
+    <div class="panel">
+      <label class="field">Title <input type="text" id="title" placeholder="e.g. Bio Unit 4: Cell Respiration"></label>
+      <div class="drop" id="drop">
+        <strong>Drop files here or click to upload</strong>
+        <div class="muted small">PDF, Word (.docx), .txt, .md, .csv${sampleCaps?.images ? ', or photos of your notes' : ''}. You can add several.</div>
+        <input type="file" id="file" multiple accept=".pdf,.docx,.txt,.md,.csv,.text${sampleCaps?.images ? ',' + sampleCaps.images.mediaTypes.join(',') : ''}" hidden>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="status muted" id="fileStatus" style="margin:8px 0"></div>
+      <label class="field">Material <span class="muted small">(uploaded text shows up here, or paste your own)</span>
+        <textarea id="src" rows="12" placeholder="Paste notes, a study guide, textbook text...&#10;&#10;Without AI, write one term per line like:&#10;Mitochondria - makes ATP for the cell"></textarea>
+      </label>
+      <div class="muted small" id="count">0 characters</div>
+    </div>
+    <div class="panel">
+      <h2>What to make</h2>
+      <div class="row" style="gap:16px">
+        <label class="field" style="flex:1;min-width:150px">Flashcards
+          <select id="nCards"><option>10</option><option selected>20</option><option>30</option><option>50</option></select></label>
+        <label class="field" style="flex:1;min-width:150px">Test questions
+          <select id="nQs"><option>10</option><option selected>15</option><option>25</option><option>40</option></select></label>
+        <label class="field" style="flex:1;min-width:150px">Category groups
+          <select id="nCats"><option value="0">None</option><option value="auto" selected>Let the AI decide</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+      </div>
+      ${sample ? '' : `<p class="muted small" id="aiNote">AI needs this page open on claude.ai while signed in. You can still make cards from "Term - definition" lines.</p>`}
+      <div class="row">
+        <button class="btn primary" id="gen" ${sample ? '' : 'disabled'}>Generate with AI</button>
+        <button class="btn" id="manual">Make cards without AI</button>
+      </div>
+      <div class="status" id="genStatus" style="margin-top:10px"></div>
+    </div>`;
+
+  const src = $('#src'), drop = $('#drop'), file = $('#file');
+  const images = [];
+  const drawThumbs = () => {
+    $('#thumbs').innerHTML = images.map((b, i) => `<figure><img src="${URL.createObjectURL(b)}" alt="Page ${i + 1}"><button data-x="${i}" aria-label="Remove">✕</button></figure>`).join('');
+    $$('[data-x]').forEach(b => b.onclick = () => { images.splice(+b.dataset.x, 1); drawThumbs(); });
+  };
+  const upd = () => $('#count').textContent = src.value.length.toLocaleString() + ' characters';
+  src.oninput = upd;
+  drop.onclick = () => file.click();
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
+  file.onchange = () => { addFiles(file.files); file.value = ''; };
+
+  function addImages(blobs, name) {
+    const caps = sampleCaps?.images, st = $('#fileStatus');
+    if (!caps) throw new Error('Photos can\'t be read in this view.');
+    const room = caps.maxCount - images.length;
+    const ok = blobs.filter(b => b.size <= caps.maxInputBytes).slice(0, Math.max(0, room));
+    images.push(...ok); drawThumbs();
+    st.textContent = ok.length ? `Added ${name} as ${ok.length} image${ok.length > 1 ? 's' : ''}.` + (ok.length < blobs.length ? ` Limit is ${caps.maxCount} images, or a file was too large.` : '') : `Could not add ${name}: limit is ${caps.maxCount} images.`;
+    if (!$('#title').value) $('#title').value = name.replace(/\.[^.]+$/, '');
+  }
+  async function addFiles(list) {
+    const st = $('#fileStatus');
+    for (const f of list) {
+      st.className = 'status muted'; st.innerHTML = `<span class="spin"></span> Reading ${esc(f.name)}...`;
+      try {
+        if (f.type.startsWith('image/')) {
+          addImages([f], f.name); continue;
+        }
+        const text = (await extractText(f)).trim();
+        if (!text && f.name.toLowerCase().endsWith('.pdf') && sampleCaps?.images) {
+          addImages(await pdfPages(f, sampleCaps.images.maxCount - images.length), f.name); continue;
+        }
+        if (!text) throw new Error('No text found. This looks like a scanned file.');
+        src.value += (src.value.trim() ? '\n\n' : '') + text;
+        if (!$('#title').value) $('#title').value = f.name.replace(/\.[^.]+$/, '');
+        st.textContent = `Added ${f.name} (${text.length.toLocaleString()} characters)`;
+      } catch (err) {
+        st.className = 'status err'; st.textContent = `${f.name}: ${err.message}`;
+      }
+    }
+    upd();
+  }
+
+  $('#manual').onclick = () => {
+    const parsed = parsePlain(src.value);
+    if (!parsed.cards.length) {
+      $('#genStatus').className = 'status err';
+      $('#genStatus').textContent = 'No terms found. Put one per line like "Term - definition" (a colon, tab or = also works).';
+      return;
+    }
+    finishSet({ title: $('#title').value || 'Untitled set', ...parsed, questions: [] });
+  };
+
+  $('#gen').onclick = async () => {
+    const st = $('#genStatus');
+    let text = src.value.trim();
+    if (text.length < 40 && !images.length) { st.className = 'status err'; st.textContent = 'Add more material first.'; return; }
+    let note = '';
+    if (text.length > MAX_CHARS) { text = text.slice(0, MAX_CHARS); note = ` Only the first ${MAX_CHARS.toLocaleString()} characters were used.`; }
+    const btn = $('#gen'); btn.disabled = true;
+    st.className = 'status muted'; st.innerHTML = '<span class="spin"></span> Claude is reading your material. This can take a minute or two...';
+    try {
+      const data = await sample.json(buildPrompt(text || '(see the attached images)', $('#nCards').value, $('#nQs').value, $('#nCats').value, images.length),
+        { cache: false, ...(images.length ? { images } : {}) });
+      const set = normalizeSet({ ...data, title: $('#title').value || data.title });
+      if (!set.cards.length && !set.questions.length) throw new Error('The AI sent back nothing usable. Try again.');
+      if (note) toast(note.trim());
+      finishSet(set);
+    } catch (err) {
+      st.className = 'status err'; st.textContent = aiError(err); btn.disabled = false;
+    }
+  };
+}
+
+function refreshCreate() {
+  const g = $('#gen'), f = $('#file'); if (!g) return;
+  g.disabled = !sample;
+  if (sample && $('#aiNote')) $('#aiNote').remove();
+  if (sampleCaps?.images) {
+    f.accept += ',' + sampleCaps.images.mediaTypes.join(',');
+    $('#drop .muted').textContent = 'PDF, Word (.docx), .txt, .md, .csv, or photos of your notes. You can add several.';
+  }
+}
+
+function finishSet(s) {
+  s = normalizeSet(s); s.id = uid();
+  sets.unshift(s); saveSets(s);
+  go({ name: 'set', id: s.id, tab: 'cards' });
+}
+
+/* ---------- file reading ---------- */
+const libs = {};
+function loadScript(src) {
+  return libs[src] ||= new Promise((ok, fail) => {
+    const s = document.createElement('script'); s.src = src; s.onload = ok;
+    s.onerror = () => { delete libs[src]; fail(new Error('Could not load the file reader. Check your connection.')); };
+    document.head.appendChild(s);
+  });
+}
+async function openPdf(f) {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  return pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+}
+async function pdfPages(f, max) {
+  const pdf = await openPdf(f), out = [];
+  for (let i = 1; i <= Math.min(pdf.numPages, max); i++) {
+    const page = await pdf.getPage(i), vp = page.getViewport({ scale: 1.6 });
+    const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    out.push(await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85)));
+  }
+  return out;
+}
+async function extractText(f) {
+  const name = f.name.toLowerCase();
+  if (name.endsWith('.pdf')) {
+    const pdf = await openPdf(f);
+    const pages = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const c = await (await pdf.getPage(i)).getTextContent();
+      let line = '', out = [];
+      for (const it of c.items) { line += it.str; if (it.hasEOL) { out.push(line); line = ''; } else if (it.str && !line.endsWith(' ')) line += ' '; }
+      out.push(line);
+      pages.push(out.join('\n'));
+    }
+    return pages.join('\n\n');
+  }
+  if (name.endsWith('.docx')) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+    return (await mammoth.extractRawText({ arrayBuffer: await f.arrayBuffer() })).value;
+  }
+  if (name.endsWith('.doc')) throw new Error('Old .doc files are not supported. Save it as .docx or PDF first.');
+  return f.text();
+}
+
+/* ---------- plain-text parsing (no AI) ---------- */
+function parsePlain(text) {
+  const cards = [], cats = [];
+  let cat = null;
+  for (let line of text.split(/\r?\n/)) {
+    line = line.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, '');
+    if (!line) continue;
+    const heading = line.match(/^#+\s*(.+)$/) || line.match(/^([^:]{1,60}):$/);
+    if (heading) { cat = { name: heading[1].trim(), items: [] }; cats.push(cat); continue; }
+    const m = line.match(/^(.+?)\s*(?:\t| [-–—=] |:\s|=)\s*(.+)$/);
+    if (m) { cards.push({ term: m[1].trim(), definition: m[2].trim() }); if (cat) cat.items.push(m[1].trim()); }
+  }
+  return { cards, categories: cats.filter(c => c.items.length) };
+}
+
+/* ---------- AI ---------- */
+function buildPrompt(text, nCards, nQs, nCats, nImages = 0) {
+  const catRule = nCats === '0' ? 'Return "categories": [].'
+    : `Make ${nCats === 'auto' ? '2 to 5' : nCats} categories. Each has 3 to 8 short items (a word or short phrase) that clearly belong to that category and no other. Group by whatever divides the material best (types, time periods, causes vs effects, people vs events, etc).`;
+  return `You turn a student's study material into study tools. Use only facts from the material. Write in plain, simple language.${nImages ? ` The student also attached ${nImages} image(s) of their notes or pages; read them as part of the material.` : ''}
+
+Return ONLY a JSON object in exactly this shape:
+{
+  "title": "short title for this set",
+  "cards": [{"term": "...", "definition": "..."}],
+  "categories": [{"name": "...", "items": ["...", "..."]}],
+  "questions": [
+    {"type": "mc", "question": "...", "choices": ["...", "...", "...", "..."], "answer": 0, "explanation": "..."},
+    {"type": "tf", "question": "a statement that is true or false", "answer": true, "explanation": "..."}
+  ]
+}
+
+Rules:
+- "cards": up to ${nCards} of the most important terms, people, dates or concepts. Definitions under 30 words. No duplicates.
+- ${catRule}
+- "questions": ${nQs} questions, about 70% "mc" and 30% "tf". For "mc", "answer" is the 0-based index of the correct choice, put the correct choice in a random position, and make wrong choices believable. Test understanding, not just wording. "explanation" is one sentence.
+
+MATERIAL:
+"""
+${text}
+"""`;
+}
+
+function aiError(e) {
+  if (e instanceof Error) return e.message;
+  return ({
+    rate_limited: 'You hit your Claude usage limit for now. Try again later or use less material.',
+    prompt_too_large: 'That is too much material at once. Split it into smaller sets.',
+    invalid_json: 'Claude\'s answer came back incomplete. Try again, or ask for fewer cards and questions.',
+    not_granted: 'This page was not allowed to use Claude. Allow it from the page\'s permissions to generate sets.',
+    session_expired: 'Your claude.ai sign-in expired. Sign in again and retry.',
+    image_rejected: 'One of the images could not be read. Try a different photo.',
+    refused: 'Claude declined to work with this material.',
+    empty_completion: 'Claude returned nothing. Try again with less material.'
+  })[e?.code] || 'Something went wrong talking to Claude. Try again.';
+}
+
+function normalizeSet(d) {
+  const str = v => (typeof v === 'string' || typeof v === 'number') ? String(v).trim() : '';
+  const cards = (Array.isArray(d.cards) ? d.cards : [])
+    .map(c => ({ term: str(c?.term), definition: str(c?.definition), known: !!c?.known }))
+    .filter(c => c.term && c.definition);
+  const categories = (Array.isArray(d.categories) ? d.categories : [])
+    .map(c => ({ name: str(c?.name), items: [...new Set((Array.isArray(c?.items) ? c.items : []).map(str).filter(Boolean))] }))
+    .filter(c => c.name && c.items.length);
+  const questions = (Array.isArray(d.questions) ? d.questions : []).map(q => {
+    if (!q || !str(q.question)) return null;
+    if (q.type === 'tf') {
+      const ans = q.answer === true || String(q.answer).toLowerCase() === 'true';
+      return { type: 'tf', question: str(q.question), answer: ans, explanation: str(q.explanation) };
+    }
+    const choices = (Array.isArray(q.choices) ? q.choices : []).map(str).filter(Boolean);
+    let ans = Number(q.answer);
+    if (!Number.isInteger(ans)) ans = choices.indexOf(str(q.answer));
+    if (choices.length < 2 || ans < 0 || ans >= choices.length) return null;
+    return { type: 'mc', question: str(q.question), choices, answer: ans, explanation: str(q.explanation) };
+  }).filter(Boolean);
+  return { id: d.id, title: str(d.title) || 'Untitled set', cards, categories, questions, bestMatch: d.bestMatch || null, created: d.created || Date.now() };
+}
+
+/* ---------- set view ---------- */
+const TABS = [['cards', 'Flashcards'], ['test', 'Practice test'], ['match', 'Match'], ['cats', 'Categories'], ['edit', 'Edit']];
+function renderSet() {
+  const set = getSet(view.id);
+  if (!set) return go({ name: 'home' });
+  app.innerHTML = `
+    <div class="row spread">
+      <div><h1>${esc(set.title)}</h1><div class="muted small">${set.cards.length} terms · ${set.questions.length} AI questions · ${set.categories.length} categories</div></div>
+      <div class="row">
+        <button class="btn sm" id="exp">Export</button>
+        <button class="btn sm bad" id="del">Delete</button>
+      </div>
+    </div>
+    <nav class="tabs">${TABS.map(([k, l]) => `<button class="tab ${view.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav>
+    <section id="pane"></section>`;
+  $$('[data-tab]').forEach(b => b.onclick = () => { if (b.dataset.tab !== view.tab) go({ name: 'set', id: set.id, tab: b.dataset.tab }); });
+  $('#exp').hidden = !downloads;
+  $('#exp').onclick = async () => {
+    const { id, ...rest } = set;
+    try {
+      await downloads.save({ filename: (set.title.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'study-set') + '.json', data: JSON.stringify(rest, null, 2) });
+    } catch (e) { if (e?.code !== 'cancelled' && e?.code !== 'declined') toast('Export did not finish.'); }
+  };
+  $('#del').onclick = async () => {
+    if (!await ask(`Delete "${set.title}"? This can't be undone.`, 'Delete', true)) return;
+    sets = sets.filter(s => s !== set); saveSets(set); persist(set, true); go({ name: 'home' });
+  };
+  ({ cards: paneCards, test: paneTest, match: paneMatch, cats: paneCats, edit: paneEdit })[view.tab]($('#pane'), set);
+}
+const empty = (msg, btn = true) => `<div class="panel empty"><p>${msg}</p>${btn ? '<button class="btn" data-goedit>Open the editor</button>' : ''}</div>`;
+function bindEmpty(p) { const b = $('[data-goedit]', p); if (b) b.onclick = () => go({ ...view, tab: 'edit' }); }
+
+/* flashcards */
+function paneCards(p, set) {
+  if (!set.cards.length) { p.innerHTML = empty('This set has no flashcards yet.'); return bindEmpty(p); }
+  const st = view.fc ||= { order: set.cards.map((_, i) => i), pos: 0, flipped: false, only: false, defFirst: false };
+  const draw = () => {
+    const order = st.only ? st.order.filter(i => !set.cards[i].known) : st.order;
+    const known = set.cards.filter(c => c.known).length;
+    if (!order.length) {
+      p.innerHTML = `<div class="panel empty"><h2>You know all ${set.cards.length} terms</h2><p>Nice. Reset to go through them again.</p><button class="btn primary" id="reset">Reset progress</button></div>`;
+      $('#reset', p).onclick = () => { set.cards.forEach(c => c.known = false); saveSets(set); st.pos = 0; draw(); };
+      return;
+    }
+    st.pos = Math.min(st.pos, order.length - 1);
+    const c = set.cards[order[st.pos]];
+    const [f, b] = st.defFirst ? [c.definition, c.term] : [c.term, c.definition];
+    p.innerHTML = `
+      <div class="row spread small"><strong>${st.pos + 1} / ${order.length}</strong><span class="muted">${known} known · ${set.cards.length - known} still learning</span></div>
+      <div class="bar"><div style="width:${(st.pos + 1) / order.length * 100}%"></div></div>
+      <button class="flash ${st.flipped ? 'flipped' : ''}" id="flash" aria-label="Flip card">
+        <div class="inner">
+          <div class="face front"><span class="lbl">${st.defFirst ? 'Definition' : 'Term'}</span>${esc(f)}</div>
+          <div class="face back"><span class="lbl">${st.defFirst ? 'Term' : 'Definition'}</span>${esc(b)}</div>
+        </div>
+      </button>
+      <div class="fc-ctrl">
+        <button class="btn" id="prev" aria-label="Previous">←</button>
+        <button class="btn bad" id="learn">Still learning</button>
+        <button class="btn good" id="know">Know it</button>
+        <button class="btn" id="next" aria-label="Next">→</button>
+      </div>
+      <div class="row">
+        <button class="btn ghost sm" id="shuf">Shuffle</button>
+        <label class="check"><input type="checkbox" id="only" ${st.only ? 'checked' : ''}> Only still-learning</label>
+        <label class="check"><input type="checkbox" id="deff" ${st.defFirst ? 'checked' : ''}> Definition first</label>
+      </div>
+      <p class="muted small" style="margin-top:10px">Click the card or press space to flip. Arrow keys move between cards.</p>`;
+    const flash = $('#flash', p);
+    const flip = () => { st.flipped = !st.flipped; flash.classList.toggle('flipped', st.flipped); };
+    const move = d => { st.pos = (st.pos + d + order.length) % order.length; st.flipped = false; draw(); };
+    const mark = k => {
+      c.known = k; saveSets(set); st.flipped = false;
+      if (!(st.only && k)) st.pos++;
+      if (st.pos >= (st.only ? st.order.filter(i => !set.cards[i].known).length : order.length)) st.pos = 0;
+      draw();
+    };
+    flash.onclick = flip;
+    $('#prev', p).onclick = () => move(-1);
+    $('#next', p).onclick = () => move(1);
+    $('#know', p).onclick = () => mark(true);
+    $('#learn', p).onclick = () => mark(false);
+    $('#shuf', p).onclick = () => { st.order = shuffle(st.order); st.pos = 0; st.flipped = false; draw(); toast('Shuffled'); };
+    $('#only', p).onchange = e => { st.only = e.target.checked; st.pos = 0; st.flipped = false; draw(); };
+    $('#deff', p).onchange = e => { st.defFirst = e.target.checked; st.flipped = false; draw(); };
+    keyHandler = e => {
+      if (e.key === ' ') { e.preventDefault(); flip(); }
+      else if (e.key === 'ArrowRight') move(1);
+      else if (e.key === 'ArrowLeft') move(-1);
+    };
+  };
+  draw();
+}
+
+/* practice test */
+function paneTest(p, set) {
+  const n = set.cards.length, nAI = set.questions.length;
+  if (!n && !nAI) { p.innerHTML = empty('Add some terms or generate questions with AI to make a test.'); return bindEmpty(p); }
+  const st = view.test;
+  if (!st) {
+    const o = view.testOpt ||= { count: Math.min(20, nAI + n), ai: nAI > 0, mc: n >= 4, tf: n >= 2, written: n > 0 };
+    p.innerHTML = `
+      <div class="panel">
+        <h2>Set up your test</h2>
+        <label class="field" style="max-width:200px">Number of questions <input type="number" id="cnt" min="1" value="${o.count}"></label>
+        <div style="display:grid;gap:8px;margin-bottom:16px">
+          <label class="check"><input type="checkbox" id="tAI" ${o.ai ? 'checked' : ''} ${nAI ? '' : 'disabled'}> AI-written questions (${nAI})</label>
+          <label class="check"><input type="checkbox" id="tMC" ${o.mc ? 'checked' : ''} ${n >= 4 ? '' : 'disabled'}> Multiple choice from flashcards ${n >= 4 ? '' : '(needs 4+ terms)'}</label>
+          <label class="check"><input type="checkbox" id="tTF" ${o.tf ? 'checked' : ''} ${n >= 2 ? '' : 'disabled'}> True / false from flashcards ${n >= 2 ? '' : '(needs 2+ terms)'}</label>
+          <label class="check"><input type="checkbox" id="tW" ${o.written ? 'checked' : ''} ${n ? '' : 'disabled'}> Written: see the definition, type the term</label>
+        </div>
+        <button class="btn primary" id="start">Start test</button>
+        <div class="status err" id="tErr"></div>
+      </div>`;
+    $('#start', p).onclick = () => {
+      Object.assign(o, { count: Math.max(1, parseInt($('#cnt', p).value) || 10), ai: $('#tAI', p).checked, mc: $('#tMC', p).checked, tf: $('#tTF', p).checked, written: $('#tW', p).checked });
+      const qs = buildTest(set, o);
+      if (!qs.length) { $('#tErr', p).textContent = 'Pick at least one question type.'; return; }
+      view.test = { qs, answers: [], done: false, override: {} }; paneTest(p, set); window.scrollTo(0, 0);
+    };
+    return;
+  }
+
+  const grade = (q, i) => {
+    const a = st.answers[i];
+    if (st.override[i]) return true;
+    if (q.type === 'written') return a != null && looseMatch(a, q.answer);
+    return a === q.answer;
+  };
+  const right = st.done ? st.qs.filter(grade).length : 0;
+  p.innerHTML = `
+    ${st.done ? `<div class="panel row spread"><div><div class="score">${Math.round(right / st.qs.length * 100)}%</div><div class="muted">${right} of ${st.qs.length} correct</div></div>
+      <div class="row"><button class="btn" id="retake">Retake</button><button class="btn primary" id="newTest">New test</button></div></div>` : ''}
+    ${st.qs.map((q, i) => {
+      const ok = st.done && grade(q, i), a = st.answers[i];
+      let body = '';
+      if (q.type === 'mc') body = `<div class="opts">${q.choices.map((c, k) => {
+        let cls = a === k ? 'sel' : '';
+        if (st.done) cls = k === q.answer ? 'ok' : a === k ? 'no' : '';
+        return `<button class="opt ${cls}" data-q="${i}" data-v="${k}" ${st.done ? 'disabled' : ''}>${esc(c)}</button>`; }).join('')}</div>`;
+      else if (q.type === 'tf') body = `<div class="opts tf">${[true, false].map(v => {
+        let cls = a === v ? 'sel' : '';
+        if (st.done) cls = v === q.answer ? 'ok' : a === v ? 'no' : '';
+        return `<button class="opt ${cls}" data-q="${i}" data-v="${v}" ${st.done ? 'disabled' : ''}>${v ? 'True' : 'False'}</button>`; }).join('')}</div>`;
+      else body = `<input type="text" data-w="${i}" value="${esc(a || '')}" placeholder="Type the term" ${st.done ? 'disabled' : ''} autocomplete="off">`;
+      let fb = '';
+      if (st.done) {
+        const exp = q.explanation ? ' ' + esc(q.explanation) : '';
+        if (ok) fb = `<div class="fb good">Correct.${exp}</div>`;
+        else if (q.type === 'written') fb = `<div class="fb bad">Answer: <strong>${esc(q.answer)}</strong> <button class="btn sm" data-ov="${i}">I was right</button></div>`;
+        else fb = `<div class="fb bad">${a == null ? 'Not answered.' : 'Incorrect.'}${exp}</div>`;
+      }
+      const label = { mc: 'Multiple choice', tf: 'True or false', written: 'Written' }[q.type];
+      return `<div class="q ${st.done ? (ok ? 'right' : 'wrong') : ''}"><div class="qn">${i + 1} of ${st.qs.length} · ${label}</div><div class="qt">${esc(q.question)}</div>${body}${fb}</div>`;
+    }).join('')}
+    ${st.done ? '' : '<div class="row" style="justify-content:flex-end"><button class="btn primary" id="submit">Check answers</button></div>'}`;
+
+  $$('[data-q]', p).forEach(b => b.onclick = () => {
+    const i = +b.dataset.q, q = st.qs[i];
+    st.answers[i] = q.type === 'tf' ? b.dataset.v === 'true' : +b.dataset.v;
+    $$(`[data-q="${i}"]`, p).forEach(x => x.classList.toggle('sel', x === b));
+  });
+  $$('[data-w]', p).forEach(inp => inp.oninput = () => st.answers[+inp.dataset.w] = inp.value);
+  $$('[data-ov]', p).forEach(b => b.onclick = () => { st.override[+b.dataset.ov] = true; paneTest(p, set); });
+  if ($('#submit', p)) $('#submit', p).onclick = async () => {
+    const missing = st.qs.length - st.qs.filter((q, i) => st.answers[i] != null && st.answers[i] !== '').length;
+    if (missing && !await ask(`${missing} question${missing > 1 ? 's are' : ' is'} unanswered. Check anyway?`, 'Check answers')) return;
+    st.done = true; paneTest(p, set); window.scrollTo(0, 0);
+  };
+  if ($('#retake', p)) $('#retake', p).onclick = () => { view.test = { qs: st.qs, answers: [], done: false, override: {} }; paneTest(p, set); window.scrollTo(0, 0); };
+  if ($('#newTest', p)) $('#newTest', p).onclick = () => { view.test = null; paneTest(p, set); };
+}
+
+function buildTest(set, o) {
+  const cards = set.cards, out = [];
+  if (o.ai) out.push(...set.questions.map(q => ({ ...q })));
+  const types = [];
+  if (o.mc && cards.length >= 4) types.push('mc');
+  if (o.tf && cards.length >= 2) types.push('tf');
+  if (o.written && cards.length) types.push('written');
+  if (types.length) cards.forEach((c, i) => {
+    const others = cards.filter((_, j) => j !== i);
+    const t = pick(types);
+    if (t === 'mc') {
+      const ch = shuffle([{ t: c.definition, ok: true }, ...shuffle(others).slice(0, 3).map(x => ({ t: x.definition }))]);
+      out.push({ type: 'mc', question: `What does "${c.term}" mean?`, choices: ch.map(x => x.t), answer: ch.findIndex(x => x.ok) });
+    } else if (t === 'tf') {
+      const truth = Math.random() < 0.5;
+      out.push({ type: 'tf', question: `${c.term}: ${truth ? c.definition : pick(others).definition}`, answer: truth, explanation: truth ? '' : `${c.term} actually means: ${c.definition}` });
+    } else out.push({ type: 'written', question: c.definition, answer: c.term });
+  });
+  return shuffle(out).slice(0, o.count);
+}
+
+function norm(s) { return String(s).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\b(the|a|an)\b/g, '').replace(/\s+/g, ' ').trim(); }
+function dist(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function looseMatch(a, b) {
+  a = norm(a); b = norm(b);
+  if (!a) return false;
+  return a === b || dist(a, b) <= Math.floor(b.length * 0.15);
+}
+
+/* match game */
+function paneMatch(p, set) {
+  if (set.cards.length < 2) { p.innerHTML = empty('Match needs at least 2 flashcards.'); return bindEmpty(p); }
+  const st = view.match;
+  if (!st) {
+    p.innerHTML = `<div class="panel empty">
+      <h2>Match</h2><p>Pair each term with its definition as fast as you can. Wrong pairs add 1 second.</p>
+      ${set.bestMatch ? `<p class="muted">Best time: <strong>${set.bestMatch.toFixed(1)}s</strong></p>` : ''}
+      <button class="btn primary" id="go">Start game</button></div>`;
+    $('#go', p).onclick = () => {
+      const picked = shuffle(set.cards).slice(0, 6);
+      view.match = { tiles: shuffle(picked.flatMap((c, k) => [{ k, t: c.term }, { k, t: c.definition }])), sel: null, gone: new Set(), start: Date.now(), pen: 0, time: null };
+      paneMatch(p, set);
+    };
+    return;
+  }
+  if (st.time != null) {
+    const best = set.bestMatch === st.time;
+    p.innerHTML = `<div class="panel empty"><h2>${st.time.toFixed(1)} seconds</h2>
+      <p>${best ? 'New best time!' : `Best time: ${set.bestMatch.toFixed(1)}s`}</p>
+      <button class="btn primary" id="again">Play again</button></div>`;
+    $('#again', p).onclick = () => { view.match = null; paneMatch(p, set); $('#go', p).click(); };
+    return;
+  }
+  p.innerHTML = `<div class="row spread" style="margin-bottom:12px"><span class="timer" id="timer">0.0s</span><button class="btn sm" id="quit">Quit</button></div>
+    <div class="tiles">${st.tiles.map((t, i) => `<button class="tile ${st.gone.has(i) ? 'gone' : ''}" data-t="${i}">${esc(t.t)}</button>`).join('')}</div>`;
+  const tick = () => { const el = $('#timer'); if (el) el.textContent = ((Date.now() - st.start) / 1000 + st.pen).toFixed(1) + 's'; };
+  timerId = setInterval(tick, 100);
+  $('#quit', p).onclick = () => { clearInterval(timerId); view.match = null; paneMatch(p, set); };
+  $$('[data-t]', p).forEach(b => b.onclick = () => {
+    const i = +b.dataset.t;
+    if (st.gone.has(i)) return;
+    $$('.tile.miss', p).forEach(x => x.classList.remove('miss'));
+    if (st.sel === null) { st.sel = i; b.classList.add('sel'); return; }
+    if (st.sel === i) { st.sel = null; b.classList.remove('sel'); return; }
+    const a = $(`[data-t="${st.sel}"]`, p);
+    a.classList.remove('sel');
+    if (st.tiles[st.sel].k === st.tiles[i].k) {
+      st.gone.add(st.sel).add(i); a.classList.add('gone'); b.classList.add('gone');
+      if (st.gone.size === st.tiles.length) {
+        clearInterval(timerId);
+        st.time = (Date.now() - st.start) / 1000 + st.pen;
+        if (!set.bestMatch || st.time < set.bestMatch) { set.bestMatch = st.time; saveSets(set); }
+        setTimeout(() => paneMatch(p, set), 300);
+      }
+    } else {
+      st.pen += 1; a.classList.add('miss'); b.classList.add('miss');
+    }
+    st.sel = null;
+  });
+}
+
+/* category sort */
+function paneCats(p, set) {
+  if (!set.categories.length) { p.innerHTML = empty('This set has no categories. Generate the set with AI, or add them in the editor.'); return bindEmpty(p); }
+  const st = view.cat ||= { items: shuffle(set.categories.flatMap((c, ci) => c.items.map(t => ({ t, c: ci })))), at: {}, sel: null, checked: false };
+  const draw = () => {
+    const chip = i => {
+      const it = st.items[i], placed = st.at[i] != null;
+      const cls = st.checked && placed ? (st.at[i] === it.c ? 'ok' : 'no') : st.sel === i ? 'sel' : '';
+      return `<button class="chip ${cls}" data-i="${i}" draggable="${!st.checked}">${esc(it.t)}</button>`;
+    };
+    const pool = st.items.map((_, i) => i).filter(i => st.at[i] == null);
+    const right = st.items.filter((it, i) => st.at[i] === it.c).length;
+    p.innerHTML = `
+      ${st.checked ? `<div class="panel row spread"><div><div class="score">${right} / ${st.items.length}</div><div class="muted">${right === st.items.length ? 'All sorted correctly.' : 'Red items are in the wrong group.'}</div></div>
+        <div class="row">${right < st.items.length ? '<button class="btn" id="fix">Fix mistakes</button>' : ''}<button class="btn primary" id="again">Play again</button></div></div>`
+      : `<p class="muted">Sort each item into the right group. Tap an item and then a group, or drag it.</p>`}
+      <div class="pool" id="pool">${pool.length ? pool.map(chip).join('') : `<span class="muted small">${st.checked ? '' : 'All items placed.'}</span>`}</div>
+      <div class="buckets">${set.categories.map((c, ci) => `
+        <div class="bucket ${st.sel != null ? 'target' : ''}" data-b="${ci}"><h3>${esc(c.name)}</h3>
+          <div class="chips">${st.items.map((_, i) => i).filter(i => st.at[i] === ci).map(chip).join('')}</div></div>`).join('')}</div>
+      ${st.checked ? '' : `<div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn primary" id="check" ${pool.length ? 'disabled' : ''}>Check</button></div>`}`;
+
+    $$('.chip', p).forEach(b => {
+      b.onclick = e => {
+        e.stopPropagation();
+        if (st.checked) return;
+        const i = +b.dataset.i;
+        if (st.at[i] != null) { delete st.at[i]; st.sel = null; }
+        else st.sel = st.sel === i ? null : i;
+        draw();
+      };
+      b.ondragstart = e => { e.dataTransfer.setData('text/plain', b.dataset.i); };
+    });
+    $$('[data-b]', p).forEach(bk => {
+      const place = i => { st.at[i] = +bk.dataset.b; st.sel = null; draw(); };
+      bk.onclick = () => { if (st.sel != null && !st.checked) place(st.sel); };
+      bk.ondragover = e => { if (!st.checked) { e.preventDefault(); bk.classList.add('over'); } };
+      bk.ondragleave = () => bk.classList.remove('over');
+      bk.ondrop = e => { e.preventDefault(); const i = e.dataTransfer.getData('text/plain'); if (i !== '') place(+i); };
+    });
+    const pl = $('#pool', p);
+    pl.ondragover = e => { if (!st.checked) e.preventDefault(); };
+    pl.ondrop = e => { e.preventDefault(); const i = e.dataTransfer.getData('text/plain'); if (i !== '') { delete st.at[+i]; draw(); } };
+    if ($('#check', p)) $('#check', p).onclick = () => { st.checked = true; draw(); };
+    if ($('#fix', p)) $('#fix', p).onclick = () => { st.items.forEach((it, i) => { if (st.at[i] !== it.c) delete st.at[i]; }); st.checked = false; draw(); };
+    if ($('#again', p)) $('#again', p).onclick = () => { view.cat = null; paneCats(p, set); };
+  };
+  draw();
+}
+
+/* editor */
+function paneEdit(p, set) {
+  const draft = view.draft ||= JSON.parse(JSON.stringify(set));
+  const catText = c => c.map(x => `${x.name}: ${x.items.join('; ')}`).join('\n');
+  const draw = () => {
+    p.innerHTML = `
+      <div class="panel">
+        <label class="field">Title <input type="text" id="eTitle" value="${esc(draft.title)}"></label>
+      </div>
+      <div class="panel">
+        <div class="row spread"><h2>Flashcards (${draft.cards.length})</h2><button class="btn sm" id="addTop">+ Add card</button></div>
+        <div id="rows">${draft.cards.map((c, i) => `
+          <div class="cardrow">
+            <span class="num">${i + 1}</span>
+            <textarea rows="2" data-f="term" data-i="${i}" placeholder="Term">${esc(c.term)}</textarea>
+            <textarea rows="2" data-f="definition" data-i="${i}" placeholder="Definition">${esc(c.definition)}</textarea>
+            <button class="btn ghost sm" data-rm="${i}" aria-label="Remove card">✕</button>
+          </div>`).join('')}</div>
+        <button class="btn sm" id="add">+ Add card</button>
+      </div>
+      <div class="panel">
+        <h2>Categories</h2>
+        <p class="muted small">One group per line: <code>Group name: item; item; item</code></p>
+        <textarea id="eCats" rows="5" placeholder="Mammals: whale; bat; dog&#10;Reptiles: snake; turtle">${esc(catText(draft.categories))}</textarea>
+      </div>
+      <div class="panel">
+        <div class="row spread"><h2>AI questions (${draft.questions.length})</h2></div>
+        ${draft.questions.length ? draft.questions.map((q, i) => `
+          <div class="row spread small" style="padding:8px 0;border-top:1px solid var(--line);flex-wrap:nowrap">
+            <span>${esc(q.question)} <span class="muted">→ ${esc(q.type === 'tf' ? (q.answer ? 'True' : 'False') : q.choices[q.answer])}</span></span>
+            <button class="btn ghost sm" data-rq="${i}" aria-label="Remove question">✕</button>
+          </div>`).join('') : '<p class="muted small">None. Generate a set with AI to get written questions.</p>'}
+      </div>
+      <div class="row" style="justify-content:flex-end;position:sticky;bottom:12px">
+        <button class="btn" id="discard">Discard changes</button>
+        <button class="btn primary" id="save">Save</button>
+      </div>`;
+    $('#eTitle', p).oninput = e => draft.title = e.target.value;
+    $('#eCats', p).oninput = e => draft._cats = e.target.value;
+    if (draft._cats != null) $('#eCats', p).value = draft._cats;
+    $$('[data-f]', p).forEach(t => t.oninput = () => draft.cards[+t.dataset.i][t.dataset.f] = t.value);
+    $$('[data-rm]', p).forEach(b => b.onclick = () => { draft.cards.splice(+b.dataset.rm, 1); draw(); });
+    $$('[data-rq]', p).forEach(b => b.onclick = () => { draft.questions.splice(+b.dataset.rq, 1); draw(); });
+    const add = top => { top ? draft.cards.unshift({ term: '', definition: '' }) : draft.cards.push({ term: '', definition: '' }); draw();
+      const rows = $$('[data-f="term"]', p); (top ? rows[0] : rows[rows.length - 1]).focus(); };
+    $('#add', p).onclick = () => add(false);
+    $('#addTop', p).onclick = () => add(true);
+    $('#discard', p).onclick = () => { view.draft = null; paneEdit(p, set); toast('Changes discarded'); };
+    $('#save', p).onclick = () => {
+      if (draft._cats != null) {
+        draft.categories = draft._cats.split('\n').map(l => {
+          const k = l.indexOf(':'); if (k < 0) return null;
+          return { name: l.slice(0, k).trim(), items: l.slice(k + 1).split(';').map(s => s.trim()).filter(Boolean) };
+        }).filter(Boolean);
+      }
+      const clean = normalizeSet(draft);
+      Object.assign(set, clean, { id: set.id });
+      saveSets(set); view.draft = null; view.fc = view.cat = view.match = view.test = null;
+      toast('Saved'); render();
+    };
+  };
+  draw();
+}
+
+render();
+initClaude();
+</script>
